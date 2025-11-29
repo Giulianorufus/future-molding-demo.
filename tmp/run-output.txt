@@ -1,0 +1,21 @@
+﻿SCRIPT_START
+READ_INPUT c:\Users\Utente\Downloads\Frutto (2).stp bytes= 860946
+IMPORTED occt-import-js
+OCCT_INITIALISED
+OCCT_PARSED
+MESH_COUNT 1
+GEOMETRIES_CONVERTED 1
+BUILDING_GLTF_BINARY
+WROTE_GLTF (manual builder): C:\Users\Utente\Documents\forma-facile-parametro-export\tmp\Frutto (2).glb
+WROTE_GLTF: C:\Users\Utente\Documents\forma-facile-parametro-export\tmp\Frutto (2).glb
+{
+  "format": "stp",
+  "volumeCm3": 4.3268120325168375,
+  "areaApproxCm2": 704.0000152587891,
+  "bbox": {
+    "x": 17.600000381469727,
+    "y": 40,
+    "z": 27.90000057220459
+  },
+  "viewerFile": "C:\\Users\\Utente\\Documents\\forma-facile-parametro-export\\tmp\\Frutto (2).glb"
+}

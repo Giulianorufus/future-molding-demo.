@@ -108,11 +108,42 @@ export default function ModelViewer() {
             // ignore
           });
         } else if (ext === "glb" || ext === "gltf") {
-          const loader = new GLTFLoader();
-          loader.load(url, (gltf: any) => {
-            if (disposed) return;
-            addAndFit(gltf.scene);
-          });
+          if (!url) {
+            // nothing to load
+            const div = document.createElement("div");
+            div.style.padding = "12px";
+            div.style.color = "#666";
+            div.innerText = `Nessun viewerUrl disponibile per il modello.`;
+            el.appendChild(div);
+          } else {
+            const loader = new GLTFLoader();
+            loader.load(
+              url,
+              (gltf: any) => {
+                if (disposed) return;
+                if (!gltf || !gltf.scene) {
+                  // invalid gltf content
+                  console.error('[ModelViewer] GLTF caricato ma scene mancante', url, gltf);
+                  const div = document.createElement("div");
+                  div.style.padding = "12px";
+                  div.style.color = "#666";
+                  div.innerText = `Impossibile visualizzare il GLB (file corrotto o vuoto).`;
+                  el.appendChild(div);
+                  return;
+                }
+                addAndFit(gltf.scene);
+              },
+              undefined,
+              (err: any) => {
+                console.error('[ModelViewer] Errore caricamento GLB:', err, url);
+                const div = document.createElement("div");
+                div.style.padding = "12px";
+                div.style.color = "#666";
+                div.innerText = `Errore caricamento modello: ${String(err?.message ?? err)}`;
+                el.appendChild(div);
+              }
+            );
+          }
         } else if (ext === "obj") {
           const loader = new OBJLoader();
           loader.load(url, (obj: any) => {

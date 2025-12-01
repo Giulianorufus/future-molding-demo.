@@ -1,32 +1,60 @@
 import { create } from "zustand";
+import type { CadAnalysisResult } from "@/cad/types";
+import type { CalcOutput } from "@/core/calcTypes";
+import type { DefectId } from "@/core/defects";
 
-export const useModelStore = create((set: any, get: any) => ({
-  model3D: null as any,
-  setModel3D: (mesh: any) => {
-    // revoke previous URL if present to avoid memory leaks
+type ModelState = {
+  file: File | null;
+  viewerUrl: string | null;
+  analysis: CadAnalysisResult | null;
+  calculated: CalcOutput | null;
+  selectedMachineId: string | null;
+  selectedMaterialId: string | null;
+  selectedDefectId: DefectId | null;
+
+  setFile: (file: File | null) => void;
+  setViewerUrl: (url: string | null) => void;
+  setAnalysis: (analysis: CadAnalysisResult | null) => void;
+  setCalculated: (calc: CalcOutput | null) => void;
+  setMachine: (id: string | null) => void;
+  setMaterial: (id: string | null) => void;
+  setDefect: (id: DefectId | null) => void;
+  reset: () => void;
+};
+
+export const useModelStore = create<ModelState>((set, get) => ({
+  file: null,
+  viewerUrl: null,
+  analysis: null,
+  calculated: null,
+  selectedMachineId: null,
+  selectedMaterialId: null,
+  selectedDefectId: null,
+
+  setFile: (file) => set({ file, calculated: null }),
+  setViewerUrl: (viewerUrl) => {
     try {
-      const prev = get().model3D;
-      if (prev) {
-        // prev can be an object with `url` or a string
-        const url = typeof prev === "string" ? prev : (prev.url as string | undefined);
-        if (url) {
-          try {
-            URL.revokeObjectURL(url);
-          } catch (_) {}
-        }
+      const prev = get().viewerUrl;
+      if (prev && prev !== viewerUrl) {
+        try { URL.revokeObjectURL(prev); } catch (_) {}
       }
     } catch (_) {}
-
-    set({ model3D: mesh });
+    set({ viewerUrl });
   },
-  clear: () => {
-    try {
-      const prev = get().model3D;
-      const url = typeof prev === "string" ? prev : (prev?.url as string | undefined);
-      if (url) {
-        try { URL.revokeObjectURL(url); } catch (_) {}
-      }
-    } catch (_) {}
-    set({ model3D: null });
-  }
+  setAnalysis: (analysis) => set({ analysis }),
+  setCalculated: (calculated) => set({ calculated }),
+  setMachine: (selectedMachineId) => set({ selectedMachineId }),
+  setMaterial: (selectedMaterialId) => set({ selectedMaterialId }),
+  setDefect: (selectedDefectId) => set({ selectedDefectId }),
+
+  reset: () =>
+    set({
+      file: null,
+      viewerUrl: null,
+      analysis: null,
+      calculated: null,
+      selectedMachineId: null,
+      selectedMaterialId: null,
+      selectedDefectId: null,
+    }),
 }));

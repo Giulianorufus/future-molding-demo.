@@ -10,6 +10,9 @@ import { saveDrawingFile, getDrawingBlob } from "@/services/db";
 import { analyzeBlob } from "@/utils/simpleAnalysis";
 import DrawingPreview from "@/components/Parametri/DrawingPreview";
 import { useModelStore } from '@/store/modelStore';
+import { useAnalysisStore } from '@/store/analysisStore';
+import { sanitizeFileName } from '@/utils/sanitizeFileName';
+import type { CadAnalysisResult } from '@/cad/types';
 import { useDrawingStore } from '@/store/drawingStore';
 import { getDrawingURL } from '@/services/db';
 
@@ -80,6 +83,35 @@ async function convertServerFile(file: Blob | File, filename?: string) {
   return URL.createObjectURL(blob2);
 }
 
+// Funzione centrale: aggiorna store in modo atomico
+function handleAnalysisDone(result: any) {
+  const { setAnalysis, setViewerUrl } = useModelStore.getState();
+
+  if (!result) {
+    console.warn("handleAnalysisDone: risultato analisi nullo");
+    setAnalysis(null);
+    setViewerUrl(null);
+    return;
+  }
+
+  if (!result.viewerUrl) {
+    console.warn("handleAnalysisDone: viewerUrl mancante, viewer disattivato");
+  }
+
+  try {
+    setAnalysis(result as any);
+  } catch (e) {
+    console.warn('handleAnalysisDone: setAnalysis failed', e);
+  }
+  try {
+    // Preserve existing viewerUrl unless the analysis result explicitly provides one
+    const current = useModelStore.getState().viewerUrl ?? null;
+    setViewerUrl(result.viewerUrl ?? current ?? null);
+  } catch (e) {
+    console.warn('handleAnalysisDone: setViewerUrl failed', e);
+  }
+}
+
 export default function ParametriPage() {
   const {
     selectedMaterial,
@@ -113,29 +145,34 @@ export default function ParametriPage() {
       try {
         const urlRec = await getDrawingURL(selectedDrawingId);
         if (urlRec) {
-          const ext = urlRec.type?.split('/').pop()?.toLowerCase() || (urlRec.url.split('.').pop() || '').toLowerCase();
-          const metaName = drawings.find((d) => d.id === selectedDrawingId)?.name || urlRec.url.split('/').pop();
-          useModelStore.getState().setModel3D({ url: urlRec.url, ext, fileName: metaName });
+          // set viewer URL in unified model store (legacy model3D shape removed)
+          useModelStore.getState().setViewerUrl(urlRec.url);
         }
       } catch (_) {}
       try {
-        // prefer server-side analysis first
+      // prefer server-side analysis first
         try {
           const metaName = drawings.find((d) => d.id === selectedDrawingId)?.name;
-          const srv = await analyzeServerFile(blob.blob, metaName ?? undefined);
-          if (srv) {
-            setAnalysis({ volume_cm3: srv.volume_cm3 ?? srv.volume ?? undefined, thickness_mm: srv.thickness_mm ?? srv.thickness_min ?? undefined });
+          const serverResult = await analyzeServerFile(blob.blob, metaName ?? undefined);
+          if (serverResult) {
+            try { if (!mounted) return; } catch(_) {}
+            handleAnalysisDone(serverResult);
             return;
           }
-        } catch (e) {
-          // server analyze failed, fallback to client
+          console.warn("Analisi server non valida, attivo fallback client");
+        } catch (err) {
+          console.error("Errore analisi server, attivo fallback client", err);
         }
 
         const res = await analyzeBlob(blob.blob);
         if (res) {
-          setAnalysis({ volume_cm3: res.volume_cm3 ?? undefined, thickness_mm: res.thickness_mm?.mean ?? undefined });
+          const vol = res.volume_cm3 ?? null;
+          const th = res.thickness_mm?.mean ?? null;
+          setAnalysis({ volume_cm3: vol ?? undefined, thickness_mm: th ?? undefined });
+          useAnalysisStore.getState().set({ volume_cm3: vol, thickness_mm: th ? { mean: th, min: th, max: th } : null });
         } else {
           setAnalysis(null);
+          useAnalysisStore.getState().clear();
         }
       } catch {
         setAnalysis(null);
@@ -144,6 +181,22 @@ export default function ParametriPage() {
   }, [selectedDrawingId, drawings]);
 
   const materials = useMemo(() => getMaterials(), []);
+  const { setAnalysis: setModelAnalysis, setViewerUrl: setModelViewerUrl } = useModelStore();
+
+  function applyAnalysisToModelStore(opts: { volume?: number | null; thickness?: number | null; bbox?: { x: number; y: number; z: number } | null; format?: string; viewerUrl?: string | null }) {
+    const currentViewer = useModelStore.getState().viewerUrl ?? null;
+    const viewer = opts.viewerUrl ?? currentViewer ?? null;
+    const res = {
+      format: (opts.format as any) ?? (viewer ? 'glb' : 'stl'),
+      volumeCm3: opts.volume ?? null,
+      areaApproxCm2: null,
+      thicknessAvgMm: opts.thickness ?? null,
+      bbox: opts.bbox ?? { x: 0, y: 0, z: 0 },
+      viewerUrl: viewer ?? '',
+    } as CadAnalysisResult;
+    try { setModelAnalysis(res); } catch (_) {}
+    try { setModelViewerUrl(viewer); } catch (_) {}
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -154,27 +207,35 @@ export default function ParametriPage() {
       setDrawings((prev) => [meta, ...prev]);
       setSelectedDrawingId(meta.id);
       toast({ title: "Disegno caricato", description: `${file.name} pronto per il calcolo` });
+      // Important: register file in the unified model store so downstream pages (Difetti, viewers)
+      // see that a file is loaded. This MUST be set, otherwise analysis/preview won't run.
+      try { useModelStore.getState().setFile(file); } catch (_) {}
       // set model store so Difetti page can show the uploaded drawing (or placeholder)
       try {
         const urlRec = await getDrawingURL(meta.id);
         const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        const safeName = sanitizeFileName(meta.name || file.name || 'upload');
         if (urlRec) {
-          useModelStore.getState().setModel3D({ url: urlRec.url, ext, fileName: meta.name });
+          useModelStore.getState().setViewerUrl(urlRec.url);
         } else {
           const tmp = URL.createObjectURL(file);
-          useModelStore.getState().setModel3D({ url: tmp, ext, fileName: meta.name });
+          useModelStore.getState().setViewerUrl(tmp);
         }
       } catch (_) {
-        try { const tmp = URL.createObjectURL(file); useModelStore.getState().setModel3D({ url: tmp, ext: file.name.split('.').pop()?.toLowerCase() || '', fileName: meta.name }); } catch(_){}
+        try { const tmp = URL.createObjectURL(file); useModelStore.getState().setViewerUrl(tmp); } catch(_){ }
       }
       // also set drawingStore file so AI assistant and viewers can request decrypted blob
       try { void useDrawingStore.getState().setFile(file); } catch (_) {}
       // Proviamo subito l'analisi server-side (fallback al client-side se necessario)
       try {
-        const srv = await analyzeServerFile(file);
-        if (srv) setAnalysis({ volume_cm3: srv.volume_cm3 ?? srv.volume ?? undefined, thickness_mm: srv.thickness_mm ?? srv.thickness_min ?? undefined });
-      } catch (e) {
-        // ignore: analysis will be attempted later or via client fallback
+        const serverResult = await analyzeServerFile(file);
+        if (serverResult) {
+          handleAnalysisDone(serverResult);
+          return;
+        }
+        console.warn("Analisi server non valida, attivo fallback client");
+      } catch (err) {
+        console.error("Errore analisi server, attivo fallback client", err);
       }
 
       // Se il file è STEP/IGES, chiediamo al server una conversione in GLB e lo impostiamo come model3D
@@ -184,17 +245,28 @@ export default function ParametriPage() {
           try {
             const glbUrl = await convertServerFile(file, file.name);
             if (glbUrl) {
-              useModelStore.getState().setModel3D({ url: glbUrl, ext: 'glb', fileName: file.name });
+              useModelStore.getState().setViewerUrl(glbUrl);
             }
           } catch (convErr) {
-            // conversion failed — leave placeholder behavior
+            // conversion failed — try client-side OCCT loader (WASM) if available
+            try {
+              const loader = await import('@/cad/loaders/stepLoader');
+              const clientResult = await loader.loadStepWithOcctAndAnalyze(file, 'step');
+              if (clientResult) {
+                handleAnalysisDone(clientResult);
+                return;
+              }
+              console.warn('Fallback client: nessun risultato valido');
+            } catch (err) {
+              console.error('Errore fallback client OCCT:', err);
+            }
           }
         } else {
           // for other formats, ensure modelStore points to stored URL/objectURL
           try {
             const urlRec = await getDrawingURL(meta.id);
             const ext2 = file.name.split('.').pop()?.toLowerCase() || '';
-            if (urlRec) useModelStore.getState().setModel3D({ url: urlRec.url, ext: ext2, fileName: meta.name });
+            if (urlRec) useModelStore.getState().setViewerUrl(urlRec.url);
           } catch (_) {}
         }
       } catch (_) {}
@@ -244,77 +316,55 @@ export default function ParametriPage() {
     }
   }
 
-  // Auto-calc: whenever drawing + press.model + selectedMaterial are present, run analysis+calculation
-  useEffect(() => {
-    let mounted = true;
-    async function runAuto() {
-      if (!selectedDrawingId || !press?.modelId || !selectedMaterial) return;
-      // already running
-      if (autoLoading) return;
-      setAutoError(null);
-      setAutoLoading(true);
-      try {
-        // ensure we have analysis
-        if (!analysis) {
-          const blobRec = await getDrawingBlob(selectedDrawingId);
-          if (!blobRec) throw new Error('Impossibile leggere il disegno selezionato');
-          // prefer server-side analysis
-          try {
-            const metaName = drawings.find((d) => d.id === selectedDrawingId)?.name;
-            const srv = await analyzeServerFile(blobRec.blob, metaName ?? undefined);
-            if (srv) {
-              if (!mounted) return;
-              setAnalysis({ volume_cm3: srv.volume_cm3 ?? srv.volume ?? undefined, thickness_mm: srv.thickness_mm ?? srv.thickness_min ?? undefined });
-            } else {
-              const res = await analyzeBlob(blobRec.blob);
-              if (res) {
-                if (!mounted) return;
-                setAnalysis({ volume_cm3: res.volume_cm3 ?? undefined, thickness_mm: res.thickness_mm?.mean ?? undefined });
-              }
-            }
-          } catch (e) {
-            // fallback to client-side
-            const res = await analyzeBlob(blobRec.blob);
-            if (res) {
-              if (!mounted) return;
-              setAnalysis({ volume_cm3: res.volume_cm3 ?? undefined, thickness_mm: res.thickness_mm?.mean ?? undefined });
-            }
-          }
-        }
+  // Auto-calc: esegue il calcolo solo quando l'analisi è disponibile
+  async function autoCalculate() {
+    if (!analysis) return;
+    if (!press?.modelId) return;
+    if (!selectedMaterial) return;
+    if (autoLoading) return;
 
-        // compute inputs
-        const spessore = (analysis?.thickness_mm) ?? manual.thickness ?? 2;
-        const volumeCavita = (analysis?.volume_cm3) ?? manual.volume ?? 10;
-        const cushion = manual.cushion ?? 1;
+    setAutoError(null);
+    setAutoLoading(true);
+    try {
+      const spessore = (analysis?.thickness_mm) ?? manual.thickness ?? 2;
+      const volumeCavita = (analysis?.volume_cm3) ?? manual.volume ?? 10;
+      const cushion = manual.cushion ?? 1;
 
-        const res = calculateInjection(
-          {
-            spessore,
-            volumeCavita,
-            volumeMaterozza: 0,
-            cushion,
-          },
-          (press.pressId as any) || "Generic",
-          press.modelId || "",
-          selectedMaterial as any
-        );
-        if (!mounted) return;
-        setCalculationResult(res);
-        if (res.success) {
-          toast({ title: "Calcolo completato", description: `Peso: ${res.weight} g • Ciclo: ${res.cycleTime} s` });
-        } else {
-          toast({ title: "Errore di calcolo", description: (res.errors ?? []).join('; '), variant: "destructive" });
-        }
-      } catch (err: any) {
-        setAutoError(String(err?.message ?? err));
-      } finally {
-        if (mounted) setAutoLoading(false);
+      const res = calculateInjection(
+        {
+          spessore,
+          volumeCavita,
+          volumeMaterozza: 0,
+          cushion,
+        },
+        (press.pressId as any) || "Generic",
+        press.modelId || "",
+        selectedMaterial as any
+      );
+
+      setCalculationResult(res);
+      if (res.success) {
+        toast({ title: "Calcolo completato", description: `Peso: ${res.weight} g • Ciclo: ${res.cycleTime} s` });
+      } else {
+        toast({ title: "Errore di calcolo", description: (res.errors ?? []).join('; '), variant: "destructive" });
       }
+    } catch (err: any) {
+      setAutoError(String(err?.message ?? err));
+    } finally {
+      setAutoLoading(false);
     }
+  }
 
-    runAuto();
-    return () => { mounted = false; };
-  }, [selectedDrawingId, press.modelId, press.pressId, selectedMaterial, drawings, analysis, manual, autoLoading, setCalculationResult, toast]);
+  useEffect(() => {
+    if (!analysis) return;
+    const selectedMachineId = press?.modelId ?? null;
+    const selectedMaterialId = selectedMaterial?.id ?? null;
+    if (!selectedMachineId) return;
+    if (!selectedMaterialId) return;
+    if (autoLoading) return;
+
+    void autoCalculate();
+  }, [analysis, press?.modelId, selectedMaterial?.id, autoLoading]);
 
   
 

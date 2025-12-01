@@ -37,6 +37,12 @@ import { chromium } from 'playwright';
       console.log('Analisi text not found within timeout');
     }
 
+    // wait a moment for viewer to start loading and capture screenshot + logs
+    await page.waitForTimeout(1500);
+    const ssPath = path.resolve(process.cwd(), 'tmp', `e2e-snap-${Date.now()}.png`);
+    await page.screenshot({ path: ssPath, fullPage: false });
+    console.log('Saved screenshot to', ssPath);
+
     // Select Brand -> Model -> Material to trigger auto-calc
     try {
       // Brand select

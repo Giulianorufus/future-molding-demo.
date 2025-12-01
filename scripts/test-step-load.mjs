@@ -39,7 +39,16 @@ async function main() {
     console.log('READ_INPUT', input, 'bytes=', buf.length);
     const uint8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 
-    const base = path.basename(input, path.extname(input));
+    function sanitizeName(n) {
+      if (!n) return 'file';
+      const parts = n.split('.');
+      if (parts.length === 1) return n.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const ext = parts.pop();
+      const baseName = parts.join('.');
+      return `${baseName.replace(/[^a-zA-Z0-9._-]/g, '_')}.${ext}`;
+    }
+
+    const base = sanitizeName(path.basename(input, path.extname(input)));
     const tmpDir = path.resolve(process.cwd(), 'tmp');
     await mkdir(tmpDir, { recursive: true });
 

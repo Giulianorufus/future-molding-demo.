@@ -31,7 +31,6 @@
     // load occt-import-js (try require then dynamic import)
     let occtModule;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       occtModule = require('occt-import-js');
       occtModule = occtModule.default ?? occtModule;
     } catch (e) {
@@ -116,7 +115,6 @@
     }
 
     // Build BufferGeometries via three
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const THREE = require('three');
 
     const geometries = [];
@@ -166,7 +164,6 @@
     let volume = null;
     try {
       // Try to require local analyzer
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { computeMeshVolume } = require('../src/cad/analyzers/meshVolume');
       volume = computeMeshVolume(merged);
     } catch (e) {

@@ -1,0 +1,45 @@
+[
+  {
+    "code": "PC",
+    "name": "Policarbonato",
+    "meltRange": [260, 320],
+    "moldRange": [70, 120],
+    "MVR": { "value": 15, "tempC": 300, "loadKg": 1.2, "unit": "cm3/10min" },
+    "tipo": "amorf",
+    "density_g_cm3": 1.20,
+    "viscosity": "media",
+    "notes": "Buona resistenza termica e meccanica."
+  },
+  {
+    "code": "ABS",
+    "name": "Acrilonitrile Butadiene Stirene",
+    "meltRange": [200, 260],
+    "moldRange": [50, 90],
+    "MVR": { "value": 12, "tempC": 230, "loadKg": 2.16, "unit": "cm3/10min" },
+    "tipo": "amorf",
+    "density_g_cm3": 1.04,
+    "viscosity": "media",
+    "notes": "Buona lavorabilità e finitura superficiale."
+  },
+  {
+    "code": "PA6",
+    "name": "Poliammide 6",
+    "meltRange": [240, 300],
+    "moldRange": [60, 90],
+    "MVR": { "value": 3, "tempC": 230, "loadKg": 2.16, "unit": "cm3/10min" },
+    "tipo": "semicristallino",
+    "density_g_cm3": 1.14,
+    "viscosity": "bassa",
+    "notes": "Assorbe umidità, necessita asciugatura prima della stampa."
+  },
+  {
+    "code": "TPU",
+    "name": "Poliuretano Termoplastico",
+    "meltRange": [180, 240],
+    "moldRange": [20, 60],
+    "MVR": { "value": 10, "tempC": 190, "loadKg": 5, "unit": "cm3/10min" },
+    "tipo": "elastomero",
+    "viscosity": "alta",
+    "notes": "Flessibile, adatto a parti elastiche."
+  }
+]

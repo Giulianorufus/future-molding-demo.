@@ -1,0 +1,18 @@
+flowchart TD
+  U[Operatore: Parametri UI] -->|Upload disegno + set pressa/materiale| P(Parametri)
+  P -->|parseCAD / parse3D| CAD[Analisi CAD (occt / fallback)]
+  CAD -->|area, volume| P
+  P -->|calcola| CALC[Engine: calculateParameters]
+  CALC -->|result| P
+  P -->|persist input+model| STORE[Zustand Store]
+  STORE -->|model URL| DIF[Pagina Difetti / ModelViewer]
+  DIF -->|seleziona difetto| RULES[Motore regole difetto]
+  RULES -->|patchedInput| CALC
+  CALC -->|newResult| STORE
+  DIF -->|invoca AI| AI(API)
+  AI -->|suggestions JSON| DIF
+  DIF -->|applica suggestion| RULES
+  subgraph backend
+    CAD
+    AI
+  end

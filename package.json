@@ -22,6 +22,8 @@
     "electron:dev": "concurrently \"npm run dev\" \"npx wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npx electron-builder",
     "e2e": "concurrently \"npm run dev\" \"npx wait-on http://localhost:5173 && npx playwright test\""
+    ,
+    "e2e:simulate": "node scripts/e2e-simulate-upload.mjs"
   },
   "main": "electron/main.js",
   "build": {

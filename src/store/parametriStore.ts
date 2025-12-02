@@ -40,8 +40,13 @@ interface ParametriState {
   setMaterialeId: (id: string | null) => void;
   setDefect: (d: string | null) => void;
 
+  // setters for geometry/viewer (may be used by pages to mirror analysis)
+  setGeometry: (g: GeometryInput | null) => void;
+  setViewerUrl: (u: string | null) => void;
+
   loadCad: (file: File) => Promise<void>;
-  calculate: () => void;
+  // calculate returns the computed CalcOutput or null on failure
+  calculate: () => CalcOutput | null;
   applyDefectFix: () => void;
 }
 
@@ -66,6 +71,9 @@ export const useParametriStore = create<ParametriState>((set, get) => ({
   setScrewDiameter: (d) => set({ screwDiameter_mm: d }),
 
   setMaterialeId: (id) => set({ materialeId: id }),
+
+  setGeometry: (g) => set({ geometry: g }),
+  setViewerUrl: (u) => set({ viewerUrl: u }),
 
   setDefect: (d) => set({ defect: d }),
 
@@ -137,6 +145,7 @@ export const useParametriStore = create<ParametriState>((set, get) => ({
 
     const result = calcolaParametri(input as any);
     set({ calculated: result });
+    return result ?? null;
   },
 
   applyDefectFix() {

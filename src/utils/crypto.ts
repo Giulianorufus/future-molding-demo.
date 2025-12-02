@@ -1,6 +1,7 @@
 // Utility per validazione e cifratura temporanea dei file in ambiente browser.
 const ALLOWED_EXT = ['pdf','dxf','dwg','step','stp','igs','iges','stl','gltf','obj'];
-const MAX_UPLOAD_BYTES = Number(process.env.REACT_APP_MAX_UPLOAD_BYTES || 15 * 1024 * 1024); // 15MB default
+// Use Vite env (import.meta.env) in browser; fallback to 15MB if not set
+const MAX_UPLOAD_BYTES = Number((typeof import.meta !== 'undefined' && import.meta.env && (import.meta.env.VITE_MAX_UPLOAD_BYTES || import.meta.env.REACT_APP_MAX_UPLOAD_BYTES)) || 15 * 1024 * 1024);
 
 function extFromName(name: string) {
   return (name.split('.').pop() || '').toLowerCase();

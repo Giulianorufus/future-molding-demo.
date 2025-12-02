@@ -17,6 +17,7 @@ import { useCadStore } from '@/store/cadStore';
 import type { CadAnalysisResult } from '@/cad/types';
 import { useDrawingStore } from '@/store/drawingStore';
 import { getDrawingURL } from '@/services/db';
+import { useParametriStore } from '@/store/parametriStore';
 
 import { calculateInjection } from "@/services/calculationEngine";
 import { exportToJSON } from '@/utils/export';
@@ -124,6 +125,7 @@ export default function ParametriPage() {
     setCalculationResult,
   } = useAppStore();
   const { toast } = useToast();
+  const paramStore = useParametriStore();
   const [drawings, setDrawings] = useState<DrawingMeta[]>([]);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -169,8 +171,20 @@ export default function ParametriPage() {
         if (res) {
           const vol = res.volume_cm3 ?? null;
           const th = res.thickness_mm?.mean ?? null;
-          setAnalysis({ volume_cm3: vol ?? undefined, thickness_mm: th ?? undefined });
+          const analysisObj = { volume_cm3: vol ?? undefined, thickness_mm: th ?? undefined };
+          setAnalysis(analysisObj);
           applyAnalysisToModelStore({ volume: vol ?? undefined, thickness: th ?? undefined });
+          // mirror into parametriStore geometry for calculation
+          try {
+            const geom = {
+              volumePezzo_cm3: vol ?? null,
+              volumeMaterozza_cm3: 0,
+              volumeTotale_cm3: vol ?? null,
+              areaProiettata_cm2: null,
+              spessoreMedio_mm: th ?? null,
+            };
+            paramStore.setGeometry(geom as any);
+          } catch (_) {}
         } else {
           setAnalysis(null);
           applyAnalysisToModelStore({ volume: undefined, thickness: undefined });
@@ -180,6 +194,11 @@ export default function ParametriPage() {
       }
     })();
   }, [selectedDrawingId, drawings]);
+
+  // DEBUG: log analysis/press/material changes
+  useEffect(() => {
+    console.log("DEBUG FM:", { analysis, press, selectedMaterial });
+  }, [analysis, press, selectedMaterial]);
 
   const materials = useMemo(() => getMaterials(), []);
   const { setAnalysis: setModelAnalysis, setViewerUrl: setModelViewerUrl } = useModelStore();
@@ -269,22 +288,17 @@ export default function ParametriPage() {
       return;
     }
 
-    const res = calculateInjection(
-      {
-        spessore,
-        volumeCavita,
-        volumeMaterozza: 0,
-        cushion,
-      },
-      (press.pressId as any) || "Generic",
-      press.modelId || "",
-      selectedMaterial as IMaterial | null
-    );
-    setCalculationResult(res);
-    if (res.success) {
-      toast({ title: "Calcolo completato", description: `Peso: ${res.weight} g • Ciclo: ${res.cycleTime} s` });
-    } else {
-      toast({ title: "Errore di calcolo", description: (res.errors ?? []).join("; "), variant: "destructive" });
+    // mirror selections into param store
+    try { paramStore.setPressaId(press?.pressId ?? null); } catch (_) {}
+    try { paramStore.setScrewDiameter(press?.screwDiameter_mm ?? null); } catch (_) {}
+    try { paramStore.setMaterialeId(selectedMaterial?.id ?? null); } catch (_) {}
+
+    const res = paramStore.calculate();
+    try { setCalculationResult(res as any); } catch (_) {}
+    if (res && (res as any).success) {
+      toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
+    } else if (res) {
+      toast({ title: "Errore di calcolo", description: ((res as any).errors ?? []).join("; "), variant: "destructive" });
     }
   }
 
@@ -302,23 +316,17 @@ export default function ParametriPage() {
       const volumeCavita = (analysis?.volume_cm3) ?? manual.volume ?? 10;
       const cushion = manual.cushion ?? 1;
 
-      const res = calculateInjection(
-        {
-          spessore,
-          volumeCavita,
-          volumeMaterozza: 0,
-          cushion,
-        },
-        (press.pressId as any) || "Generic",
-        press.modelId || "",
-        selectedMaterial as any
-      );
+      // mirror selections into param store
+      try { paramStore.setPressaId(press?.pressId ?? null); } catch (_) {}
+      try { paramStore.setScrewDiameter(press?.screwDiameter_mm ?? null); } catch (_) {}
+      try { paramStore.setMaterialeId(selectedMaterial?.id ?? null); } catch (_) {}
 
-      setCalculationResult(res);
-      if (res.success) {
-        toast({ title: "Calcolo completato", description: `Peso: ${res.weight} g • Ciclo: ${res.cycleTime} s` });
-      } else {
-        toast({ title: "Errore di calcolo", description: (res.errors ?? []).join('; '), variant: "destructive" });
+      const res = paramStore.calculate();
+      try { setCalculationResult(res as any); } catch (_) {}
+      if (res && (res as any).success) {
+        toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
+      } else if (res) {
+        toast({ title: "Errore di calcolo", description: ((res as any).errors ?? []).join('; '), variant: "destructive" });
       }
     } catch (err: any) {
       setAutoError(String(err?.message ?? err));

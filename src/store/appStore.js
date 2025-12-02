@@ -1,2 +1,1 @@
-// DEPRECATED — use the .ts version
-module.exports = {};
+export { useAppStore } from './appStore.ts';

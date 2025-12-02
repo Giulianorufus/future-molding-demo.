@@ -78,7 +78,8 @@ export function estimateThickness_mm(
   const nor = geom.getAttribute("normal");
 
   const ray = new THREE.Raycaster();
-  ray.firstHitOnly = true as any; // compat three-mesh-bvh se presente
+  // three-mesh-bvh adds `firstHitOnly`—use an any-cast to avoid TS error when not present
+  (ray as any).firstHitOnly = true;
   const dir = new THREE.Vector3();
   const origin = new THREE.Vector3();
   const worldMatrix = mesh.matrixWorld;

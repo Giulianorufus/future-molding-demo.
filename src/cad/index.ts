@@ -31,11 +31,36 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
   }
 
   if (format === "stl") {
-    return loadStlAndAnalyze(file);
+    try {
+      return await loadStlAndAnalyze(file);
+    } catch (e) {
+      // Neutralized loader or runtime error — provide minimal fallback
+      const url = URL.createObjectURL(file);
+      return {
+        format: "stl",
+        volumeCm3: null,
+        areaApproxCm2: null,
+        thicknessAvgMm: null,
+        bbox: { x: 0, y: 0, z: 0 },
+        viewerUrl: url,
+      } as any;
+    }
   }
 
   if (format === "glb" || format === "gltf") {
-    return loadGlbAndAnalyze(file);
+    try {
+      return await loadGlbAndAnalyze(file);
+    } catch (e) {
+      const url = URL.createObjectURL(file);
+      return {
+        format: "glb",
+        volumeCm3: null,
+        areaApproxCm2: null,
+        thicknessAvgMm: null,
+        bbox: { x: 0, y: 0, z: 0 },
+        viewerUrl: url,
+      } as any;
+    }
   }
 
   // Per STEP/IGES/OBJ proviamo a usare un loader dedicato che sfrutti
@@ -43,7 +68,19 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
   // fallback a un risultato minimo (viewerUrl) come prima.
   if (format === "step" || format === "iges") {
     // Ora usiamo il loader OCCT + GLB
-    return loadStepWithOcctAndAnalyze(file, format);
+    try {
+      return await loadStepWithOcctAndAnalyze(file, format);
+    } catch (e) {
+      const url = URL.createObjectURL(file);
+      return {
+        format: format,
+        volumeCm3: null,
+        areaApproxCm2: null,
+        thicknessAvgMm: null,
+        bbox: { x: 0, y: 0, z: 0 },
+        viewerUrl: url,
+      } as any;
+    }
   }
 
   // OBJ (per ora ancora senza analisi)

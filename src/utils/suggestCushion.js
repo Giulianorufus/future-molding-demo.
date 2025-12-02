@@ -1,9 +1,14 @@
-import materials from "@/data/materials.json";
+import { getMaterialInput } from "@/data/materialCatalog";
 function getViscosity(code) {
-    if (!code)
-        return;
-    const m = materials.find(x => x.code === code);
-    return m?.viscosity;
+    if (!code) return;
+    const m = getMaterialInput(code);
+    if (!m) return undefined;
+    const id = (m.id || '').toUpperCase();
+    if (id.includes('TPU') || id.includes('TPE')) return 'elastomero';
+    const vf = Number(m.viscosityFactor ?? 1);
+    if (vf >= 1.3) return 'alta';
+    if (vf >= 1.0) return 'media';
+    return 'bassa';
 }
 /**
  * Regola industriale:

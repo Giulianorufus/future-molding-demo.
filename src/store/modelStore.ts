@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { CadAnalysisResult } from "@/cad/types";
-import type { CalcOutput } from "@/core/calcTypes";
-import type { DefectId } from "@/core/defects";
+import type { CalcOutput } from "@/engine/calcTypes";
+type DefectId = string;
 
 type ModelState = {
   file: File | null;

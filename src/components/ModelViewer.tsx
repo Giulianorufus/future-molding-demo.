@@ -1,13 +1,14 @@
 import React, { useEffect, useRef } from "react";
 import { useModelStore } from "../store/modelStore";
-import { useDrawingStore } from "../store/drawingStore";
 
-export default function ModelViewer() {
-  const { model3D } = useModelStore();
+// DEPRECATED — replaced by ThreeViewer.tsx
+export default function DeprecatedViewer() {
+  const viewerUrl = useModelStore((s) => s.viewerUrl);
+  const file = useModelStore((s) => s.file);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!model3D || !containerRef.current) return;
+    if (!containerRef.current) return;
     const elRef = containerRef.current;
 
     let disposed = false;
@@ -73,29 +74,9 @@ export default function ModelViewer() {
         };
 
         // load model from URL based on extension
-        // Prefer decrypted object URL from drawing store when available
-        let url = (model3D as any).url;
-        let decryptedUrl: string | null = null;
-        try {
-          const getDec = (useDrawingStore as any).getState?.().getDecryptedObjectUrl;
-          if (typeof getDec === 'function') {
-            // attempt to get a decrypted object URL; falls back to existing url
-            // note: this returns a new objectURL that must be revoked on cleanup
-            // we await it here so loaders will use the decrypted blob
-            // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            (async () => {
-              try {
-                const dec = await getDec();
-                if (dec) {
-                  decryptedUrl = dec;
-                  url = dec;
-                }
-              } catch (_) {}
-            })();
-          }
-        } catch (_) {}
-        // Note: we keep track of decryptedUrl and revoke it on cleanup
-        const ext = (model3D as any).ext || "";
+        let url = viewerUrl || null;
+        // Note: we keep track of decryptedUrl and revoke it on cleanup (not implemented here)
+        const ext = (file?.name?.split('.').pop() || url?.split('.').pop() || '').toLowerCase();
 
         if (ext === "stl") {
           const loader = new STLLoader();
@@ -161,15 +142,7 @@ export default function ModelViewer() {
 
         animate();
 
-        // revoke decryptedUrl on cleanup to remove plaintext trace
-        const revokeDecrypted = () => {
-          try {
-            if (decryptedUrl) URL.revokeObjectURL(decryptedUrl);
-          } catch (_) {}
-        };
-
-        // attach to dispose path on the captured element
-        try { if (el) (el as any)._revokeDecrypted = revokeDecrypted; } catch (_) {}
+        // (no decrypted-url cleanup required here)
 
         const handleResize = () => {
           if (disposed || !elRef) return;
@@ -201,9 +174,9 @@ export default function ModelViewer() {
         }
       } catch (e) {}
     };
-  }, [model3D]);
+  }, [viewerUrl, file]);
 
-  if (!model3D) {
+        if (!viewerUrl && !file) {
     return (
       <div className="flex justify-center items-center h-full text-gray-500">
         Nessun modello caricato
@@ -213,7 +186,7 @@ export default function ModelViewer() {
 
   return (
     <div className="flex flex-col items-stretch h-full">
-      <div className="text-sm text-gray-700 mb-2">Modello: <strong>{(model3D as any).fileName}</strong></div>
+      <div className="text-sm text-gray-700 mb-2">Modello: <strong>{file?.name ?? 'modello'}</strong></div>
       <div ref={containerRef} style={{ height: 420, width: '100%' }} />
     </div>
   );

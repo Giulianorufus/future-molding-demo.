@@ -12,6 +12,8 @@ import DrawingPreview from "@/components/Parametri/DrawingPreview";
 import { useModelStore } from '@/store/modelStore';
 import { useAnalysisStore } from '@/store/analysisStore';
 import { sanitizeFileName } from '@/utils/sanitizeFileName';
+import { startCadPipeline } from '@/cad/cadPipeline';
+import { useCadStore } from '@/store/cadStore';
 import type { CadAnalysisResult } from '@/cad/types';
 import { useDrawingStore } from '@/store/drawingStore';
 import { getDrawingURL } from '@/services/db';
@@ -155,7 +157,6 @@ export default function ParametriPage() {
           const metaName = drawings.find((d) => d.id === selectedDrawingId)?.name;
           const serverResult = await analyzeServerFile(blob.blob, metaName ?? undefined);
           if (serverResult) {
-            try { if (!mounted) return; } catch(_) {}
             handleAnalysisDone(serverResult);
             return;
           }
@@ -169,10 +170,10 @@ export default function ParametriPage() {
           const vol = res.volume_cm3 ?? null;
           const th = res.thickness_mm?.mean ?? null;
           setAnalysis({ volume_cm3: vol ?? undefined, thickness_mm: th ?? undefined });
-          useAnalysisStore.getState().set({ volume_cm3: vol, thickness_mm: th ? { mean: th, min: th, max: th } : null });
+          applyAnalysisToModelStore({ volume: vol ?? undefined, thickness: th ?? undefined });
         } else {
           setAnalysis(null);
-          useAnalysisStore.getState().clear();
+          applyAnalysisToModelStore({ volume: undefined, thickness: undefined });
         }
       } catch {
         setAnalysis(null);
@@ -226,50 +227,21 @@ export default function ParametriPage() {
       }
       // also set drawingStore file so AI assistant and viewers can request decrypted blob
       try { void useDrawingStore.getState().setFile(file); } catch (_) {}
-      // Proviamo subito l'analisi server-side (fallback al client-side se necessario)
+      // Start unified CAD pipeline (analyze + set viewer URL in cadStore)
       try {
-        const serverResult = await analyzeServerFile(file);
-        if (serverResult) {
-          handleAnalysisDone(serverResult);
-          return;
-        }
-        console.warn("Analisi server non valida, attivo fallback client");
-      } catch (err) {
-        console.error("Errore analisi server, attivo fallback client", err);
-      }
-
-      // Se il file è STEP/IGES, chiediamo al server una conversione in GLB e lo impostiamo come model3D
-      try {
-        const ext = file.name.split('.').pop()?.toLowerCase() || '';
-        if (['step', 'stp', 'iges', 'igs'].includes(ext)) {
-          try {
-            const glbUrl = await convertServerFile(file, file.name);
-            if (glbUrl) {
-              useModelStore.getState().setViewerUrl(glbUrl);
-            }
-          } catch (convErr) {
-            // conversion failed — try client-side OCCT loader (WASM) if available
-            try {
-              const loader = await import('@/cad/loaders/stepLoader');
-              const clientResult = await loader.loadStepWithOcctAndAnalyze(file, 'step');
-              if (clientResult) {
-                handleAnalysisDone(clientResult);
-                return;
-              }
-              console.warn('Fallback client: nessun risultato valido');
-            } catch (err) {
-              console.error('Errore fallback client OCCT:', err);
-            }
-          }
+        const pipelineResult = await startCadPipeline(file);
+        if (pipelineResult?.success) {
+          const cadState = useCadStore.getState();
+          // Mirror essential values into the legacy model store so downstream code keeps working
+          applyAnalysisToModelStore({ volume: cadState.volumeCm3 ?? undefined, thickness: cadState.thicknessAvgMm ?? undefined, viewerUrl: cadState.viewerUrl ?? undefined, format: file.name.split('.').pop() ?? undefined });
         } else {
-          // for other formats, ensure modelStore points to stored URL/objectURL
-          try {
-            const urlRec = await getDrawingURL(meta.id);
-            const ext2 = file.name.split('.').pop()?.toLowerCase() || '';
-            if (urlRec) useModelStore.getState().setViewerUrl(urlRec.url);
-          } catch (_) {}
+          // Pipeline failed: keep existing viewer URL (objectURL) and let user enter manual inputs
+          const cadState = useCadStore.getState();
+          applyAnalysisToModelStore({ volume: cadState.volumeCm3 ?? undefined, thickness: cadState.thicknessAvgMm ?? undefined, viewerUrl: cadState.viewerUrl ?? undefined });
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('Errore pipeline CAD:', err);
+      }
     } catch (err) {
       toast({ title: "Errore caricamento", description: String(err ?? "Impossibile salvare il file"), variant: "destructive" });
     } finally {

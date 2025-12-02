@@ -1,12 +1,18 @@
-import materials from "@/data/materials.json";
+import materialCatalog, { getMaterialInput } from "@/data/materialCatalog";
 
 // Tipi minimi per evitare dipendenze incrociate
 export type Viscosity = "alta" | "media" | "bassa" | "elastomero";
 
 function getViscosity(code?: string): Viscosity | undefined {
   if (!code) return;
-  const m = (materials as any[]).find(x => x.code === code);
-  return m?.viscosity as Viscosity | undefined;
+  const m = getMaterialInput(code) as any;
+  if (!m) return undefined;
+  const id = (m.id || '').toUpperCase();
+  if (id.includes('TPU') || id.includes('TPE')) return 'elastomero';
+  const vf = Number(m.viscosityFactor ?? 1);
+  if (vf >= 1.3) return 'alta';
+  if (vf >= 1.0) return 'media';
+  return 'bassa';
 }
 
 /**

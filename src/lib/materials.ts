@@ -1,4 +1,4 @@
-import materialsData from '../data/materials.json';
+import materialCatalog, { getMaterialInput } from '../data/materialCatalog';
 
 export interface MaterialData {
   code: string;
@@ -21,15 +21,27 @@ export interface MaterialData {
  */
 export function getMaterialByCode(code: string): MaterialData | null {
   if (!code) return null;
-  const material = materialsData.find(m => m.code.toUpperCase() === code.toUpperCase());
-  return material as MaterialData || null;
+  const m = getMaterialInput(code);
+  if (!m) return null;
+  // Adapt materialCatalog entry to the legacy MaterialData shape as best-effort
+  return ({
+    code: m.id,
+    name: (m.nome as any) || '',
+    meltRange: [(m.tempCylStart_C ?? 0), (m.tempCylEnd_C ?? 0)],
+    moldRange: [(m.tempMold_C ?? 0)],
+    MVR: { value: 0, tempC: 0, loadKg: 0, unit: 'cm3/10min' },
+    tipo: 'amorf',
+    density_g_cm3: m.density_g_cm3 ?? 1,
+    viscosity: (m.viscosityFactor && Number(m.viscosityFactor) >= 1.2) ? 'alta' : 'media',
+    notes: (m as any).notes || '',
+  } as MaterialData);
 }
 
 /**
  * Get all available material codes
  */
 export function getMaterialCodes(): string[] {
-  return materialsData.map(m => m.code);
+  return materialCatalog.map((m) => m.id);
 }
 
 /**

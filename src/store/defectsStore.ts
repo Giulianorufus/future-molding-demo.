@@ -1,51 +1,52 @@
 import { create } from "zustand";
 
-export type DefectPoint = {
+// Defect pin shape used by InteractiveCanvas and DefectsList
+export type DefectPin = {
   id: string;
-  type: string;    // tipo difetto (es. "Riempimento incompleto")
-  x: number;       // coordinate normalizzate 0..1
-  y: number;
-  note?: string;
+  face: "front" | "back";
+  x: number; // 0..1 normalized
+  y: number; // 0..1 normalized
+  rotation_deg: 0 | 90 | 180 | 270;
+  defect: string; // defect type label
+  severity: number; // 1..5
+  notes?: string;
 };
 
 type DefectsState = {
-  points: DefectPoint[];
-  addPoint: (point: Omit<DefectPoint, "id">) => void;
-  removePoint: (id: string) => void;
+  pins: DefectPin[];
+  selectedPin: string | null;
+  addPin: (p: Omit<DefectPin, "id">) => void;
+  removePin: (id: string) => void;
+  updatePin: (id: string, updates: Partial<DefectPin>) => void;
   clearAll: () => void;
-  updatePoint: (id: string, updates: Partial<DefectPoint>) => void;
+  setSelectedPin: (id: string | null) => void;
 };
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const genId = () => Math.random().toString(36).slice(2, 10);
 
 export const useDefectsStore = create<DefectsState>((set, get) => ({
-  points: [],
-  
-  addPoint: (point) => {
-    const newPoint: DefectPoint = {
-      ...point,
-      id: generateId(),
-    };
+  pins: [],
+  selectedPin: null,
+
+  addPin: (p) => {
+    const newPin: DefectPin = { ...p, id: genId() } as DefectPin;
+    set((state) => ({ pins: [...state.pins, newPin] }));
+    set(() => ({ selectedPin: newPin.id }));
+  },
+
+  removePin: (id) => {
+    set((state) => ({ pins: state.pins.filter((x) => x.id !== id) }));
+    const sel = get().selectedPin;
+    if (sel === id) set({ selectedPin: null });
+  },
+
+  updatePin: (id, updates) => {
     set((state) => ({
-      points: [...state.points, newPoint],
+      pins: state.pins.map((x) => (x.id === id ? { ...x, ...updates } : x)),
     }));
   },
-  
-  removePoint: (id) => {
-    set((state) => ({
-      points: state.points.filter((p) => p.id !== id),
-    }));
-  },
-  
-  clearAll: () => {
-    set({ points: [] });
-  },
-  
-  updatePoint: (id, updates) => {
-    set((state) => ({
-      points: state.points.map((p) =>
-        p.id === id ? { ...p, ...updates } : p
-      ),
-    }));
-  },
+
+  clearAll: () => set({ pins: [], selectedPin: null }),
+
+  setSelectedPin: (id) => set({ selectedPin: id }),
 }));

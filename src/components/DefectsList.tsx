@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Edit3, ChevronDown, ChevronRight } from "lucide-react";
-import { DefectPin } from "./InteractiveCanvas";
+import { DefectPin } from "@/store/defectsStore";
 
 const DEFECT_TYPES = [
   "Linee di flusso",

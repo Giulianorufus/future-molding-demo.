@@ -13,14 +13,11 @@ export default function Inputs() {
     calculate,
   } = useParametriStore();
 
-  const selectedMachine = arburgPressCatalog.find(
-    (m: any) => m.id === pressaId
-  );
+  const selectedMachine = arburgPressCatalog.find((m: any) => m.id === pressaId);
 
   const availableScrews: number[] =
     selectedMachine?.injectionUnits
-      ?.map((u: any) => u.screwDiameters_mm)
-      .flat()
+      ?.map((u: any) => u.screwDiameter_mm)
       .filter((v: any, i: number, arr: any[]) => arr.indexOf(v) === i) || [];
 
   return (
@@ -40,7 +37,7 @@ export default function Inputs() {
           <option value="">Seleziona pressa</option>
           {arburgPressCatalog.map((m: any) => (
             <option key={m.id} value={m.id}>
-              {m.name ?? m.modelName ?? m.id}
+              {m.nome ?? m.id}
             </option>
           ))}
         </select>

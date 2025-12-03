@@ -6,17 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RotateCcw, Move, ZoomIn, Download, FlipHorizontal } from "lucide-react";
 import { DefectsList } from "./DefectsList";
-
-export interface DefectPin {
-  id: string;
-  face: "front" | "back";
-  x: number; // 0-1 normalized
-  y: number; // 0-1 normalized
-  rotation_deg: 0 | 90 | 180 | 270;
-  defect: string;
-  severity: number; // 1-5
-  notes: string;
-}
+import { useDefectsStore, type DefectPin } from "@/store/defectsStore";
 
 interface InteractiveCanvasProps {
   frontImage?: string;
@@ -28,8 +18,13 @@ export const InteractiveCanvas = ({ frontImage, backImage }: InteractiveCanvasPr
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [currentFace, setCurrentFace] = useState<"front" | "back">("front");
   const [currentRotation, setCurrentRotation] = useState<0 | 90 | 180 | 270>(0);
-  const [pins, setPins] = useState<DefectPin[]>([]);
-  const [selectedPin, setSelectedPin] = useState<string | null>(null);
+  // Use centralized defects store instead of local state
+  const pins = useDefectsStore((s) => s.pins);
+  const selectedPin = useDefectsStore((s) => s.selectedPin);
+  const addPinToStore = useDefectsStore((s) => s.addPin);
+  const updatePinInStore = useDefectsStore((s) => s.updatePin);
+  const removePinFromStore = useDefectsStore((s) => s.removePin);
+  const setSelectedPin = useDefectsStore((s) => s.setSelectedPin);
 
   // Immagini placeholder
   const defaultFrontImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f3f4f6'/%3E%3Ctext x='200' y='150' text-anchor='middle' fill='%23666' font-size='16'%3EFRONTE%3C/text%3E%3C/svg%3E";
@@ -165,8 +160,7 @@ export const InteractiveCanvas = ({ frontImage, backImage }: InteractiveCanvasPr
     const x = Math.max(0, Math.min(1, (canvasX - imageLeft) / imageWidth));
     const y = Math.max(0, Math.min(1, (canvasY - imageTop) / imageHeight));
 
-    const newPin: DefectPin = {
-      id: `pin_${Date.now()}`,
+    const newPinPayload: Omit<DefectPin, 'id'> = {
       face: currentFace,
       x,
       y,
@@ -176,8 +170,7 @@ export const InteractiveCanvas = ({ frontImage, backImage }: InteractiveCanvasPr
       notes: "",
     };
 
-    setPins(prev => [...prev, newPin]);
-    setSelectedPin(newPin.id);
+    addPinToStore(newPinPayload);
   }, [fabricCanvas, currentFace, currentRotation]);
 
   // Renderizza i pin sul canvas
@@ -273,13 +266,11 @@ export const InteractiveCanvas = ({ frontImage, backImage }: InteractiveCanvasPr
   };
 
   const handleUpdatePin = (pinId: string, updates: Partial<DefectPin>) => {
-    setPins(prev => 
-      prev.map(pin => pin.id === pinId ? { ...pin, ...updates } : pin)
-    );
+    updatePinInStore(pinId, updates);
   };
 
   const handleDeletePin = (pinId: string) => {
-    setPins(prev => prev.filter(pin => pin.id !== pinId));
+    removePinFromStore(pinId);
     if (selectedPin === pinId) {
       setSelectedPin(null);
     }

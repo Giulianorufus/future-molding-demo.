@@ -2,6 +2,7 @@
 // Hardened STEP/IGES loader: dynamic OCCT + Three.js usage, safe fallback.
 
 import * as THREE from "three";
+import useDrawingStore from "@/store/drawingStore";
 import type { CadAnalysisResult } from "../types";
 import { computeMeshVolume } from "../analyzers/meshVolume";
 
@@ -139,19 +140,39 @@ function probeReadResult(occt: OcctModule, data: Uint8Array, isIges: boolean): a
 
 export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "iges"): Promise<CadAnalysisResult> {
   const fmt = format ?? (file.name.split(".").pop()?.toLowerCase() === "iges" || file.name.split(".").pop()?.toLowerCase() === "igs" ? "iges" : "step");
+  const { setGlbUrl, setGeometry, setIsLoading, setError } = useDrawingStore.getState();
 
+  setIsLoading(true);
   try {
     const occt = await loadOcctModule();
-    if (!occt) return fallbackResult(file, fmt);
+    if (!occt) {
+      const fb = fallbackResult(file, fmt);
+      setGeometry(null);
+      setGlbUrl(fb.viewerUrl);
+      setError(null);
+      return fb;
+    }
 
     const buffer = await file.arrayBuffer();
     const uint8 = new Uint8Array(buffer);
 
     const result = probeReadResult(occt, uint8, fmt === "iges");
-    if (!result) return fallbackResult(file, fmt);
+    if (!result) {
+      const fb = fallbackResult(file, fmt);
+      setGeometry(null);
+      setGlbUrl(fb.viewerUrl);
+      setError(null);
+      return fb;
+    }
 
     const meshes: any[] = Array.isArray(result.meshes) && result.meshes.length ? result.meshes : Array.isArray(result) && result.length ? result : [];
-    if (!meshes.length) return fallbackResult(file, fmt);
+    if (!meshes.length) {
+      const fb = fallbackResult(file, fmt);
+      setGeometry(null);
+      setGlbUrl(fb.viewerUrl);
+      setError(null);
+      return fb;
+    }
 
     const geometry = buildGeometryFromOcctMeshes(meshes);
     geometry.computeBoundingBox();
@@ -165,7 +186,6 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
       volume = computeMeshVolume(geometry);
     } catch (_) {
       try {
-        // approximate using vertex-based method if needed
         const pos = geometry.getAttribute("position");
         const idx = geometry.getIndex();
         if (pos && idx) {
@@ -178,7 +198,7 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
             c.set(pos.getX(ic), pos.getY(ic), pos.getZ(ic));
             v += a.dot(b.cross(c));
           }
-          volume = Math.abs(v / 6) / 1000; // mm³ -> cm³ assumption
+          volume = Math.abs(v / 6) / 1000;
         }
       } catch (e) {
         volume = null;
@@ -191,8 +211,28 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
     try {
       viewerUrl = await exportGeometryToGlbUrl(geometry);
     } catch (err) {
-      return fallbackResult(file, fmt);
+      const fb = fallbackResult(file, fmt);
+      setGeometry(null);
+      setGlbUrl(fb.viewerUrl);
+      setError(null);
+      return fb;
     }
+
+    if (!volume || (volume ?? 0) <= 0) {
+      throw new Error("Geometria non valida: volume pezzo mancante o nullo.");
+    }
+
+    const geo = {
+      volumePezzo_cm3: volume ?? 0,
+      volumeMaterozza_cm3: null,
+      volumeTotale_cm3: (volume ?? 0) + 0,
+      areaProiettata_cm2: areaApprox,
+      spessoreMedio_mm: null,
+    };
+
+    setGeometry(geo);
+    setGlbUrl(viewerUrl);
+    setError(null);
 
     return {
       format: fmt,
@@ -204,7 +244,12 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
     };
   } catch (err) {
     console.warn("STEP/IGES loader error, using fallback:", err);
+    setGlbUrl(null);
+    setGeometry(null);
+    setError(err instanceof Error ? err.message : String(err));
     return fallbackResult(file, fmt);
+  } finally {
+    setIsLoading(false);
   }
 }
 

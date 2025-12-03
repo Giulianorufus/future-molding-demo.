@@ -1,551 +1,139 @@
-import React from "react";
-import { useAppStore } from "@/store/appStore";
-import { getMaterials, type IMaterial } from "@/fm-core";
-import PressSelection from "@/components/Parametri/PressSelection";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { addDrawing, loadDrawings, type DrawingMeta } from "@/services/storage";
-import { saveDrawingFile, getDrawingBlob } from "@/services/db";
-import { analyzeBlob } from "@/utils/simpleAnalysis";
-import DrawingPreview from "@/components/Parametri/DrawingPreview";
-// modelStore references removed: use parametriStore as single source-of-truth
-// analysisStore not needed; ParametriPage keeps its own analysis and mirrors into parametriStore
-import { sanitizeFileName } from '@/utils/sanitizeFileName';
-import { startCadPipeline } from '@/cad/cadPipeline';
-import { useCadStore } from '@/store/cadStore';
-import type { CadAnalysisResult } from '@/cad/types';
-import { useDrawingStore } from '@/store/drawingStore';
-import { getDrawingURL } from '@/services/db';
-import { useParametriStore } from '@/store/parametriStore';
+import React, { useEffect } from "react";
+import { useCadStore } from "@/store/cadStore";
+import { useParametriStore } from "@/store/parametriStore";
+import { usePressStore } from "@/store/pressStore";
 
-// calculation is delegated to parametriStore
-import { exportToJSON } from '@/utils/export';
-import { useDrawingUpload } from '@/hooks/useDrawingUpload';
+import { useDefectsStore } from "@/store/defectsStore"; // se esiste, altrimenti puoi rimuoverlo
+import Inputs from "@/pages/Parametri/Inputs";
+import CalculatedParameters from "@/pages/Parametri/CalculatedParameters";
+import GeometryInfo from "@/pages/Parametri/GeometryInfo";
 
-// --- helper: call server analyze endpoint (module scope to keep hooks stable) ---
-async function analyzeServerFile(file: Blob | File, filename?: string) {
-  const fd = new FormData();
-  const name = filename ?? ((file as File).name ?? 'upload.bin');
-  // if it's a Blob without name, wrap into File for FormData compatibility
-  const payload = file instanceof File ? file : new File([file], name);
-  fd.append('file', payload, name);
+const ParametriPage: React.FC = () => {
+  // CAD: analisi + viewer
+  const cadAnalysis = useCadStore((s) => (s as any).result ?? (s as any).analysis ?? null);
+  const cadStatus = useCadStore((s) => (s as any).status ?? (s as any).state ?? "idle");
+  const cadError = useCadStore((s) => (s as any).error ?? null);
+  const cadViewerUrl = useCadStore((s) => (s as any).viewerUrl ?? null);
 
-  const resp = await fetch('/api/calc/analyze', { method: 'POST', body: fd });
-  if (!resp.ok) {
-    throw new Error(`Server analyze failed: ${resp.status} ${resp.statusText}`);
-  }
-  const body = await resp.json();
-  // normalizza campi
-  return {
-    volume_cm3: body.volume ?? body.volume_cm3,
-    thickness_mm: body.thickness_min ?? body.thickness_mm,
-    surface_area: body.surface_area ?? body.area,
-    projectedArea_cm2: body.projectedArea_cm2 ?? body.area_cm2,
-    warnings: body.warnings || []
-  } as any;
-}
+  // Pressa selezionata (pressStore deve già esistere)
+  const selectedPress = usePressStore((s) => (s as any).selectedPress ?? (s as any).currentPress ?? null);
+  const selectedScrewDiameter = usePressStore((s) => (s as any).selectedScrewDiameter_mm ?? (s as any).screwDiameter_mm ?? null);
 
-// --- helper: call server convert endpoint for STEP/IGES (returns objectURL) ---
-async function convertServerFile(file: Blob | File, filename?: string) {
-  const fd = new FormData();
-  const name = filename ?? ((file as File).name ?? 'upload.step');
-  const payload = file instanceof File ? file : new File([file], name);
-  fd.append('file', payload, name);
+  // Parametri store
+  const geometry = useParametriStore((s) => s.geometry);
+  const setGeometry = useParametriStore((s) => s.setGeometry);
+  const setViewerUrl = useParametriStore((s) => s.setViewerUrl);
+  const setPress = useParametriStore((s) => s.setPress);
+  const materialId = useParametriStore((s) => s.materialId);
+  const setMaterial = useParametriStore((s) => s.setMaterial);
+  const calculate = useParametriStore((s) => s.calculate);
+  const calculated = useParametriStore((s) => s.calculated);
+  const loading = useParametriStore((s) => s.loading);
+  const error = useParametriStore((s) => s.error);
 
-  const resp = await fetch('/api/calc/convert', { method: 'POST', body: fd });
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Convert failed: ${resp.status} ${resp.statusText} ${txt}`);
-  }
+  // Se Inputs già gestisce la scelta materiale → Inputs deve chiamare setMaterial().
+  // Se la scelta materiale è in un altro store, qui devi fare il bridge.
 
-  const contentType = resp.headers.get('content-type') || '';
-  if (contentType.includes('model/gltf-binary') || contentType.includes('application/octet-stream')) {
-    const ab = await resp.arrayBuffer();
-    const blob = new Blob([ab], { type: 'model/gltf-binary' });
-    const url = URL.createObjectURL(blob);
-    return url;
-  }
-
-  // If server returned JSON (gltf), create a blob
-  if (contentType.includes('application/json') || contentType.includes('application/ld+json')) {
-    const body = await resp.json();
-    if (body && body.gltf) {
-      const blob = new Blob([JSON.stringify(body.gltf)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      return url;
-    }
-    // otherwise return JSON as text URL
-    const txt = JSON.stringify(body);
-    const blob = new Blob([txt], { type: 'application/json' });
-    return URL.createObjectURL(blob);
-  }
-
-  // fallback: try to read as arrayBuffer and create object URL
-  const ab2 = await resp.arrayBuffer();
-  const blob2 = new Blob([ab2]);
-  return URL.createObjectURL(blob2);
-}
-
-// Funzione centrale: aggiorna store in modo atomico
-function handleAnalysisDone(result: any) {
-  // Mirror analysis results into parametriStore (single source of truth)
-  const paramStore = useParametriStore.getState();
-  if (!result) {
-    console.warn("handleAnalysisDone: risultato analisi nullo");
-    try { paramStore.setGeometry(null); } catch (_) {}
-    try { paramStore.setViewerUrl(null); } catch (_) {}
-    return;
-  }
-
-  try {
-    const geom = {
-      volumePezzo_cm3: result.volume_cm3 ?? result.volume ?? null,
-      volumeMaterozza_cm3: 0,
-      volumeTotale_cm3: result.volume_cm3 ?? result.volume ?? null,
-      areaProiettata_cm2: result.projectedArea_cm2 ?? result.area_cm2 ?? null,
-      spessoreMedio_mm: result.thickness_mm?.mean ?? result.thickness_mm ?? null,
-    };
-    paramStore.setGeometry(geom as any);
-  } catch (e) {
-    console.warn('handleAnalysisDone: setGeometry failed', e);
-  }
-  try { paramStore.setViewerUrl(result.viewerUrl ?? null); } catch (_) {}
-}
-
-export default function ParametriPage() {
-  const {
-    selectedMaterial,
-    setMarca,
-    setModello,
-    setSelectedMaterial,
-    calculationResult,
-    setCalculationResult,
-  } = useAppStore();
-  const { toast } = useToast();
-  const paramStore = useParametriStore();
-  const [drawings, setDrawings] = useState<DrawingMeta[]>([]);
-  const [selectedDrawingId, setSelectedDrawingId] = useState<string>("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [press, setPress] = useState<{ pressId?: string; modelId?: string; screwDiameter_mm?: number; useModelScrew?: boolean }>({ useModelScrew: true });
-  const [analysis, setAnalysis] = useState<{ volume_cm3?: number; thickness_mm?: number } | null>(null);
-  const [manual, setManual] = useState<{ thickness?: number; volume?: number; cushion?: number }>({});
-  const [autoLoading, setAutoLoading] = useState(false);
-  const [autoError, setAutoError] = useState<string | null>(null);
-  const [showManualInputs, setShowManualInputs] = useState(false);
-
+  // 1) Bridge CAD → parametriStore (geometria + viewerUrl)
   useEffect(() => {
-    setDrawings(loadDrawings());
-  }, []);
+    if (!cadAnalysis) return;
 
+    console.log("[ParametriPage] CAD analysis ricevuta:", cadAnalysis);
+
+    const volumeCm3 = (cadAnalysis as any).volumeCm3 ?? (cadAnalysis as any).volume ?? null;
+
+    const thicknessAvgMm =
+      (cadAnalysis as any).thicknessAvgMm ?? (cadAnalysis as any).avgThickness ?? null;
+
+    const bbox = (cadAnalysis as any).bbox ?? (cadAnalysis as any).boundingBox ?? null;
+
+    setGeometry({
+      volumeCm3,
+      thicknessAvgMm,
+      bbox,
+    });
+
+    if (cadViewerUrl) {
+      setViewerUrl(cadViewerUrl);
+    }
+  }, [cadAnalysis, cadViewerUrl, setGeometry, setViewerUrl]);
+
+  // 2) Bridge Pressa → parametriStore
   useEffect(() => {
-    (async () => {
-      if (!selectedDrawingId) { setAnalysis(null); return; }
-      const blob = await getDrawingBlob(selectedDrawingId);
-      if (!blob) { setAnalysis(null); return; }
-      // aggiorna modelStore così la pagina Difetti vede che c'è un disegno caricato
-      try {
-        const urlRec = await getDrawingURL(selectedDrawingId);
-        if (urlRec) {
-          // set viewer URL in parametriStore (single source-of-truth for viewer)
-          try { useParametriStore.getState().setViewerUrl(urlRec.url); } catch (_) {}
-        }
-      } catch (_) { }
-      try {
-        // prefer server-side analysis first
-        try {
-          const metaName = drawings.find((d) => d.id === selectedDrawingId)?.name;
-          const serverResult = await analyzeServerFile(blob.blob, metaName ?? undefined);
-          if (serverResult) {
-            handleAnalysisDone(serverResult);
-            return;
-          }
-          console.warn("Analisi server non valida, attivo fallback client");
-        } catch (err) {
-          console.error("Errore analisi server, attivo fallback client", err);
-        }
+    if (!selectedPress || !(selectedPress as any).id) return;
 
-        const res = await analyzeBlob(blob.blob);
-        if (res) {
-          const vol = res.volume_cm3 ?? null;
-          const th = res.thickness_mm?.mean ?? null;
-          const analysisObj = { volume_cm3: vol ?? undefined, thickness_mm: th ?? undefined };
-          setAnalysis(analysisObj);
-          // Mirror into parametriStore geometry for calculation (single source-of-truth)
-          try {
-            const geom = {
-              volumePezzo_cm3: vol ?? null,
-              volumeMaterozza_cm3: 0,
-              volumeTotale_cm3: vol ?? null,
-              areaProiettata_cm2: null,
-              spessoreMedio_mm: th ?? null,
-            };
-            useParametriStore.getState().setGeometry(geom as any);
-          } catch (_) {}
-        } else {
-          setAnalysis(null);
-          try { useParametriStore.getState().setGeometry(null); } catch (_) {}
-        }
-      } catch {
-        setAnalysis(null);
-      }
-    })();
-  }, [selectedDrawingId, drawings]);
+    setPress({
+      pressaId: (selectedPress as any).id,
+      screwDiameter_mm: selectedScrewDiameter ?? null,
+    });
 
-  // DEBUG: log analysis/press/material changes
+    console.log("[ParametriPage] Pressa selezionata:", {
+      id: (selectedPress as any).id,
+      screwDiameter_mm: selectedScrewDiameter,
+    });
+  }, [selectedPress, selectedScrewDiameter, setPress]);
+
+  // 3) QUI DEVI ASSICURARTI CHE materialId VENGA POPOLATO
+  //    SE Inputs.tsx già chiama useParametriStore().setMaterial(id), non serve fare altro.
+  //    Se invece materiale viene salvato in un altro store, devi fare il bridge come fatto per la pressa.
+
+  // 4) Auto-calcolo quando ho: geometria + pressa + materiale
   useEffect(() => {
-    console.log("DEBUG FM:", { analysis, press, selectedMaterial });
-  }, [analysis, press, selectedMaterial]);
+    if (!geometry || !geometry.volumeCm3 || geometry.volumeCm3 <= 0) return;
+    if (!selectedPress || !(selectedPress as any).id) return;
+    if (!materialId) return;
 
-  const materials = useMemo(() => getMaterials(), []);
-  // modelStore usage removed here; parametriStore is the single source of truth
+    console.log("[ParametriPage] AUTO-CALC TRIGGERED", {
+      geometry,
+      press: selectedPress,
+      materialId,
+    });
 
-  const { handleUpload: uploadHook, isUploading } = useDrawingUpload();
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Use shared hook
-    const id = await uploadHook(file);
-
-    if (id) {
-      // Update local state to reflect the new drawing
-      const meta = { id, name: file.name, size: file.size, type: file.type, uploadedAt: Date.now() };
-      setDrawings((prev) => [meta, ...prev]);
-      setSelectedDrawingId(id);
-    }
-
-    e.target.value = "";
-  }
-
-  function handleCalc() {
-    if (!selectedDrawingId) {
-      toast({ title: "Seleziona disegno", description: "Carica o scegli un disegno prima di calcolare", variant: "destructive" });
-      return;
-    }
-    if (!press?.modelId || !selectedMaterial) {
-      toast({ title: "Compila i campi", description: "Pressa/Modello e Materiale sono obbligatori", variant: "destructive" });
-      return;
-    }
-
-    // Determina sorgente dati: analisi o input manuali (per PDF/STEP)
-    const spessore = analysis?.thickness_mm ?? manual.thickness ?? 2;
-    const volumeCavita = analysis?.volume_cm3 ?? manual.volume ?? 10;
-    const cushion = manual.cushion ?? 1;
-
-    if (!analysis && (!manual.thickness || !manual.volume)) {
-      toast({ title: "Dati mancanti", description: "Inserisci spessore e volume per file non analizzabili", variant: "destructive" });
-      return;
-    }
-
-    // mirror selections into param store
-    try { paramStore.setPressaId(press?.pressId ?? null); } catch (_) { }
-    try { paramStore.setScrewDiameter(press?.screwDiameter_mm ?? null); } catch (_) { }
-    try { paramStore.setMaterialeId(selectedMaterial?.id ?? null); } catch (_) { }
-
-    // NEW: Ensure geometry is set in store (handling manual inputs or fallback)
-    try {
-      const geometry = {
-        volumePezzo_cm3: volumeCavita,
-        volumeMaterozza_cm3: 0,
-        volumeTotale_cm3: volumeCavita,
-        areaProiettata_cm2: null, // Engine will estimate if null
-        spessoreMedio_mm: spessore,
-      };
-      paramStore.setGeometry(geometry as any);
-    } catch (e) {
-      console.warn("Failed to sync geometry to store", e);
-    }
-
-    const res = paramStore.calculate();
-    try { setCalculationResult(res as any); } catch (_) { }
-    if (res && (res as any).success) {
-      toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
-    } else if (res) {
-      toast({ title: "Errore di calcolo", description: ((res as any).errors ?? []).join("; "), variant: "destructive" });
-    }
-  }
-
-  // Auto-calc: trigger when parametriStore has geometry, press and material
-  const _geometry = useParametriStore((s) => s.geometry);
-  const _pressaId = useParametriStore((s) => s.pressaId);
-  const _materialeId = useParametriStore((s) => s.materialeId);
-
-  useEffect(() => {
-    if (!(_geometry && _pressaId && _materialeId)) return;
-    if (autoLoading) return;
-
-    let mounted = true;
-    (async () => {
-      setAutoError(null);
-      setAutoLoading(true);
-      try {
-        const res = useParametriStore.getState().calculate();
-        if (!mounted) return;
-        try { setCalculationResult(res as any); } catch (_) {}
-        if (res && (res as any).success) {
-          toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
-        } else if (res) {
-          toast({ title: "Errore di calcolo", description: ((res as any).errors ?? []).join('; '), variant: "destructive" });
-        }
-      } catch (err: any) {
-        setAutoError(String(err?.message ?? err));
-      } finally {
-        if (mounted) setAutoLoading(false);
-      }
-    })();
-
-    return () => { mounted = false; };
-  }, [_geometry, _pressaId, _materialeId]);
-
-
+    calculate();
+  }, [geometry, selectedPress, materialId, calculate]);
 
   return (
-    <div className="max-w-5xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Parametri di Stampaggio</h1>
-
-      <div className="grid gap-6">
-        {/* Carica/Seleziona disegno */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="space-y-2 md:col-span-2">
-            <label className="block text-sm font-medium">Disegno</label>
-            <div className="flex gap-2">
-              <select
-                className="w-full border rounded px-3 py-2"
-                value={selectedDrawingId}
-                onChange={(e) => setSelectedDrawingId(e.target.value)}
-              >
-                <option value="">Seleziona un disegno</option>
-                {drawings.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-              <input ref={fileInputRef} type="file" accept=".stl,.glb,.gltf,.obj,.pdf,.dwg,.step,.stp" className="hidden" onChange={handleUpload} />
-              <Button onClick={() => fileInputRef.current?.click()}>Carica disegno</Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Pressa / Modello / Vite */}
-        <div>
-          <PressSelection
-            value={press}
-            onChange={(v) => {
-              setPress(v);
-              // Mantieni anche lo store sincronizzato per compatibilità
-              setMarca((v.pressId as any) ?? "");
-              setModello(v.modelId ?? "");
-              // Mirror selection into parametriStore
-              try { useParametriStore.getState().setPressaId(v?.pressId ?? null); } catch (_) {}
-              try { useParametriStore.getState().setScrewDiameter(v?.screwDiameter_mm ?? null); } catch (_) {}
-            }}
-            disabled={!selectedDrawingId}
-          />
-          {!selectedDrawingId && (
-            <div className="text-xs text-muted-foreground mt-2">Carica un disegno prima di selezionare la pressa.</div>
-          )}
-        </div>
-
-        {/* Materiale */}
-        <div className="space-y-2 md:max-w-sm">
-          <label className="block text-sm font-medium">Materiale</label>
-          <select
-            className="w-full border rounded px-3 py-2"
-            value={selectedMaterial?.id ?? ""}
-            onChange={(e) => {
-              const mat = materials.find((x) => x.id === e.target.value) ?? null;
-              setSelectedMaterial(mat as IMaterial | null);
-              try { useParametriStore.getState().setMaterialeId(mat?.id ?? null); } catch (_) {}
-            }}
-            disabled={!selectedDrawingId}
-          >
-            <option value="">{selectedDrawingId ? 'Seleziona materiale' : 'Carica disegno per abilitare'}</option>
-            {materials.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          {!selectedDrawingId && <div className="text-xs text-muted-foreground mt-2">Seleziona o carica un disegno per abilitare la scelta del materiale.</div>}
-        </div>
-
-        {/* Riepilogo analisi o input manuali se non disponibile */}
-        {autoLoading ? (
-          <div className="text-sm text-slate-700">Analisi in corso... attendere prego.</div>
-        ) : autoError ? (
-          <div className="text-sm text-red-600">Errore analisi: {autoError}</div>
-        ) : analysis ? (
-          <div className="text-sm text-slate-700">
-            Analisi disegno: volume ≈ {analysis.volume_cm3?.toFixed(2)} cm³ • spessore medio ≈ {analysis.thickness_mm?.toFixed(2)} mm
-          </div>
-        ) : (
-          <div className="text-sm text-slate-500">Nessuna analisi disponibile. Il sistema tenterà l'analisi automatica quando possibile.</div>
-        )}
-
-        <div className="mt-2">
-          <button className="text-sm text-blue-600 underline" onClick={() => setShowManualInputs((s) => !s)}>
-            {showManualInputs ? 'Nascondi input manuali' : 'Mostra input manuali (advanced)'}
-          </button>
-        </div>
-
-        {showManualInputs && !autoLoading && (
-          <div className="grid md:grid-cols-3 gap-4 mt-3">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Spessore medio (mm)</label>
-              <input type="number" className="w-full border rounded px-3 py-2" min={0} step={0.1}
-                value={manual.thickness ?? ""}
-                onChange={(e) => setManual((m) => ({ ...m, thickness: e.target.value === "" ? undefined : Number(e.target.value) }))}
-                placeholder="Es. 2.0" />
-            </div>
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Volume cavità (cm³)</label>
-              <input type="number" className="w-full border rounded px-3 py-2" min={0} step={0.1}
-                value={manual.volume ?? ""}
-                onChange={(e) => setManual((m) => ({ ...m, volume: e.target.value === "" ? undefined : Number(e.target.value) }))}
-                placeholder="Es. 10.0" />
-            </div>
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Cushion (cm³)</label>
-              <input type="number" className="w-full border rounded px-3 py-2" min={0} step={0.1}
-                value={manual.cushion ?? ""}
-                onChange={(e) => setManual((m) => ({ ...m, cushion: e.target.value === "" ? undefined : Number(e.target.value) }))}
-                placeholder="Es. 1.0" />
-            </div>
-            <div className="text-xs text-slate-500 md:col-span-3">Formati non analizzabili automaticamente (PDF/STEP/DWG): inserisci questi valori per procedere.</div>
-          </div>
-        )}
-
-        {/* Preview del disegno selezionato */}
-        {selectedDrawingId && (
-          <DrawingPreview drawingId={selectedDrawingId} />
-        )}
-      </div>
-
-      <div className="mt-6">
-        <Button
-          onClick={handleCalc}
-          disabled={!selectedDrawingId || !press?.modelId || !selectedMaterial || autoLoading}
-          title={!selectedDrawingId ? 'Carica o seleziona un disegno per abilitare il calcolo' : (!press?.modelId ? 'Seleziona modello pressa' : (!selectedMaterial ? 'Seleziona materiale' : (autoLoading ? 'Analisi in corso' : 'Pronto')))}
-        >
-          {autoLoading ? 'Analisi in corso...' : 'Calcola'}
-        </Button>
-
-        {/* helper reasons when disabled */}
-        {(!selectedDrawingId || !press?.modelId || !selectedMaterial) && (
-          <div className="mt-2 text-xs text-muted-foreground">
-            {!selectedDrawingId && <div>• Carica o seleziona un disegno (obbligatorio).</div>}
-            {!press?.modelId && <div>• Seleziona la pressa e il modello (obbligatorio).</div>}
-            {!selectedMaterial && <div>• Seleziona il materiale (obbligatorio).</div>}
-          </div>
-        )}
-      </div>
-
-      {calculationResult && calculationResult.success && (
-        <div className="mt-4 border rounded p-4 bg-white">
-          <div className="font-semibold mb-2">Risultati</div>
-
-          {/* Shot */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Shot</div>
-            <div className="font-medium">Peso: {calculationResult.weight} g</div>
-          </div>
-
-          {/* Iniezione */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Iniezione</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>Tempo ciclo:</div><div>{calculationResult.cycleTime} s</div>
-              <div>Velocità iniezione:</div><div>{calculationResult.injectionSpeed_cm3s ?? '-'} cm³/s</div>
-              <div>Pressione iniezione:</div><div>{calculationResult.injectionPressure_bar ?? '-'} bar</div>
-              <div>RPM vite:</div><div>{calculationResult.rpm ?? '-'} rpm</div>
-            </div>
-          </div>
-
-          {/* VP */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">VP (Volume)</div>
-            <div className="font-medium">{calculationResult.vp_cm3 ?? '-'} cm³</div>
-          </div>
-
-          {/* Pack */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Pack</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>Pressione Pack:</div><div>{calculationResult.pack_bar ?? '-'} bar</div>
-              <div>Tempo Pack:</div><div>{calculationResult.pack_s ?? '-'} s</div>
-            </div>
-          </div>
-
-          {/* Raffreddamento */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Raffreddamento</div>
-            <div className="font-medium">{calculationResult.cooling_s ?? '-'} s</div>
-          </div>
-
-          {/* Plastificazione */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Plastificazione</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>Contropressione:</div><div>{calculationResult.backpressure_bar ?? '-'} bar</div>
-            </div>
-          </div>
-
-          {/* Tonnellaggio */}
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Tonnellaggio</div>
-            <div className="font-medium">{calculationResult.requiredTonnage_t ?? '-'} t • Pressa adeguata: {calculationResult.pressAdequate ? 'Sì' : 'No'}</div>
-          </div>
-
-          {/* Note */}
-          {(calculationResult as any)?.notes && (
-            <div className="mt-2 text-sm text-slate-700">
-              <div className="text-xs text-gray-500">Note</div>
-              <div>{(calculationResult as any).notes}</div>
-            </div>
-          )}
-          <div className="mt-4 flex gap-2">
-            <button
-              className="px-3 py-2 bg-blue-600 text-white rounded"
-              onClick={async () => {
-                const machineParams = {
-                  injectionSpeed_cm3s: Number((calculationResult.injectionSpeed_cm3s ?? 0).toFixed(2)),
-                  injectionPressure_bar: Number((calculationResult.injectionPressure_bar ?? 0).toFixed(2)),
-                  vp_cm3: Number((calculationResult.vp_cm3 ?? 0).toFixed(2)),
-                  pack_bar: Number((calculationResult.pack_bar ?? 0).toFixed(2)),
-                  pack_s: Number((calculationResult.pack_s ?? 0).toFixed(2)),
-                  cooling_s: Number((calculationResult.cooling_s ?? 0).toFixed(2)),
-                  rpm: Number((calculationResult.rpm ?? 0).toFixed(0)),
-                  backpressure_bar: Number((calculationResult.backpressure_bar ?? 0).toFixed(2)),
-                  requiredTonnage_t: Number((calculationResult.requiredTonnage_t ?? 0).toFixed(2)),
-                };
-                try {
-                  await navigator.clipboard.writeText(JSON.stringify(machineParams));
-                  toast({ title: 'Parametri copiati', description: 'Parametri macchina copiati negli appunti (JSON).' });
-                } catch (e) {
-                  // ignore clipboard errors
-                  console.warn('Clipboard failed', e);
-                }
-                exportToJSON(`params_${Date.now()}.json`, machineParams);
-              }}
-            >
-              Esporta parametri macchina
-            </button>
-            <button className="px-3 py-2 bg-gray-100 text-gray-900 rounded" onClick={() => window.print()}>Stampa</button>
-          </div>
-        </div>
+    <div className="flex flex-col gap-4 p-4">
+      {/* Stato CAD */}
+      {cadStatus === "loading" && (
+        <div className="text-sm text-blue-500">Analisi disegno in corso...</div>
+      )}
+      {cadError && (
+        <div className="text-sm text-red-500">Errore analisi disegno: {cadError}</div>
       )}
 
-      {calculationResult && !calculationResult.success && (
-        <div className="mt-4 border rounded p-4 bg-red-50 text-red-700">
-          <div className="font-semibold mb-2">Errori</div>
-          <ul className="list-disc ml-5 text-sm">
-            {(calculationResult.errors ?? []).map((e, i) => (
-              <li key={i}>{e}</li>
-            ))}
-          </ul>
-        </div>
+      {/* Info geometria */}
+      <GeometryInfo />
+
+      {/* Sezione input (pressa, vite, materiale, ecc.) */}
+      <Inputs />
+
+      {/* Stato calcolo */}
+      {loading && (
+        <div className="text-sm text-blue-500">Calcolo parametri in corso...</div>
       )}
+      {error && (
+        <div className="text-sm text-red-500">Errore calcolo parametri: {error}</div>
+      )}
+
+      {/* Risultati parametri */}
+      <CalculatedParameters />
+
+      {/* Debug opzionale (puoi togliere dopo i test) */}
+      <pre className="mt-4 text-xs text-gray-500 bg-black/5 p-2 rounded">
+        DEBUG:
+        {"\n"}
+        geometry: {JSON.stringify(geometry, null, 2)}
+        {"\n"}
+        press: {JSON.stringify(selectedPress, null, 2)}
+        {"\n"}
+        materialId: {JSON.stringify(materialId, null, 2)}
+        {"\n"}
+        calculated: {JSON.stringify(calculated, null, 2)}
+      </pre>
     </div>
   );
-}
+};
+
+export default ParametriPage;
+

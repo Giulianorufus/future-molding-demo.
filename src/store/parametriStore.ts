@@ -1,165 +1,277 @@
 import { create } from "zustand";
-import { calcolaParametri } from "../engine/calcEngine";
-import type { CalcOutput, GeometryInput } from "../engine/calcTypes";
+import { calcolaParametri } from "@/engine/calcEngine";
+import type { CalcOutput } from "@/engine/calcTypes";
+import { getMachineInputFromArburg } from "@/data/arburgPressCatalog";
+import { getMaterialInput } from "@/data/materialCatalog";
 
-// Cataloghi nuovi
-import arburgPressCatalog, {
-  getMachineInputFromArburg,
-} from "../data/arburgPressCatalog";
+type GeometryState = {
+  volumeCm3: number | null;
+  thicknessAvgMm: number | null;
+  bbox:
+    | {
+        x: number;
+        y: number;
+        z: number;
+      }
+    | null;
+};
 
-import materialCatalog, {
-  getMaterialInput,
-} from "../data/materialCatalog";
-
-// Se usi il loader CAD:
-import { loadCadModel } from "../cad";
-import type { CadAnalysisResult } from "../cad/types";
-
-// Se hai DefectAI:
-import { defectRules } from "../ai/defectRules";
+type PressSelection = {
+  pressaId: string;
+  screwDiameter_mm: number | null;
+};
 
 interface ParametriState {
-  // selezioni operatore
-  pressaId: string | null; // id ArburgMachine
-  screwDiameter_mm: number | null; // vite scelta
-  materialeId: string | null; // id MaterialSpec
-
-  // CAD
-  geometry: GeometryInput | null;
+  geometry: GeometryState | null;
   viewerUrl: string | null;
 
-  // risultato calcolo
+  press: PressSelection | null;
+  materialId: string | null;
+
+  // legacy compatibility (used across the codebase)
+  pressaId: string | null;
+  screwDiameter_mm: number | null;
+  materialeId: string | null;
+
   calculated: CalcOutput | null;
-
-  // difetti
+  loading: boolean;
+  error: string | null;
+  // defect helpers used by Difetti pages (legacy)
   defect: string | null;
-
-  // azioni
-  setPressaId: (id: string | null) => void;
-  setScrewDiameter: (d: number | null) => void;
-  setMaterialeId: (id: string | null) => void;
   setDefect: (d: string | null) => void;
-
-  // setters for geometry/viewer (may be used by pages to mirror analysis)
-  setGeometry: (g: GeometryInput | null) => void;
-  setViewerUrl: (u: string | null) => void;
-
-  loadCad: (file: File) => Promise<void>;
-  // calculate returns the computed CalcOutput or null on failure
-  calculate: () => CalcOutput | null;
   applyDefectFix: () => void;
+
+  // setters di base
+  setGeometry: (geom: GeometryState | null) => void;
+  setViewerUrl: (url: string | null) => void;
+  setPress: (press: PressSelection | null) => void;
+  setMaterial: (materialId: string | null) => void;
+  // legacy setters
+  setPressaId: (pressaId: string | null) => void;
+  setScrewDiameter: (diameter: number | null) => void;
+  setMaterialeId: (materialeId: string | null) => void;
+  reset: () => void;
+
+  // calcolo principale
+  calculate: () => CalcOutput | null;
 }
 
 export const useParametriStore = create<ParametriState>((set, get) => ({
+  geometry: null,
+  viewerUrl: null,
+
+  press: null,
+  materialId: null,
+
+  // legacy fields mirrored for compatibility
   pressaId: null,
   screwDiameter_mm: null,
   materialeId: null,
 
-  geometry: null,
-  viewerUrl: null,
-
   calculated: null,
+  loading: false,
+  error: null,
   defect: null,
 
-  setPressaId: (id) =>
-    set({
-      pressaId: id,
-      // se cambio pressa, azzero vite
-      screwDiameter_mm: null,
+  setGeometry: (geom) =>
+    set((state) => ({
+      ...state,
+      geometry: geom,
+      // se cambio geometria, il calcolo precedente non è più valido
+      calculated: null,
+      error: null,
+    })),
+
+  setViewerUrl: (url) =>
+    set((state) => ({
+      ...state,
+      viewerUrl: url,
+    })),
+
+  setPress: (press) =>
+    set((state) => ({
+      ...state,
+      press,
+      // keep legacy fields in sync
+      pressaId: press?.pressaId ?? null,
+      screwDiameter_mm: press?.screwDiameter_mm ?? null,
+      // cambio pressa → invalido calcolo precedente
+      calculated: null,
+      error: null,
+    })),
+
+  setMaterial: (materialId) =>
+    set((state) => ({
+      ...state,
+      materialId,
+      materialeId: materialId ?? null,
+      // cambio materiale → invalido calcolo precedente
+      calculated: null,
+      error: null,
+    })),
+
+  // legacy setters: update both the structured `press` and the legacy fields
+  setPressaId: (pressaId) =>
+    set((state) => {
+      const press = pressaId ? { pressaId, screwDiameter_mm: state.screwDiameter_mm ?? null } : null;
+      return {
+        ...state,
+        press,
+        pressaId: pressaId ?? null,
+        calculated: null,
+        error: null,
+      };
     }),
 
-  setScrewDiameter: (d) => set({ screwDiameter_mm: d }),
+  setScrewDiameter: (diameter) =>
+    set((state) => {
+      const press = state.press ? { ...state.press, screwDiameter_mm: diameter } : (state.pressaId ? { pressaId: state.pressaId, screwDiameter_mm: diameter } : null);
+      return {
+        ...state,
+        press,
+        screwDiameter_mm: diameter ?? null,
+        calculated: null,
+        error: null,
+      };
+    }),
 
-  setMaterialeId: (id) => set({ materialeId: id }),
-
-  setGeometry: (g) => set({ geometry: g }),
-  setViewerUrl: (u) => set({ viewerUrl: u }),
+  setMaterialeId: (materialeId) =>
+    set((state) => ({
+      ...state,
+      materialId: materialeId ?? null,
+      materialeId: materialeId ?? null,
+      calculated: null,
+      error: null,
+    })),
 
   setDefect: (d) => set({ defect: d }),
-
-  async loadCad(file) {
-    const res: CadAnalysisResult = await loadCadModel(file);
-
-    // manteniamo campi compatibili sia con le nuove unità (_cm3/_cm2/_mm)
-    // sia con il vecchio codice che legge `volumePezzo`, `areaProiettata`, `spessoreMedio`.
-    const geometryCompat = {
-      // nuovi campi con unità
-      volumePezzo_cm3: res.volumeCm3 ?? 0,
-      volumeMaterozza_cm3: 0,
-      volumeTotale_cm3: res.volumeCm3 ?? 0,
-      areaProiettata_cm2: res.areaApproxCm2 ?? 0,
-      spessoreMedio_mm: res.thicknessAvgMm ?? 2,
-      // campi di compatibilità (senza suffisso) per UI legacy
-      volumePezzo: res.volumeCm3 ?? 0,
-      volumeMaterozza: 0,
-      volumeTotale: res.volumeCm3 ?? 0,
-      areaProiettata: res.areaApproxCm2 ?? 0,
-      spessoreMedio: res.thicknessAvgMm ?? 2,
-    };
-
-    // cast a `any` per evitare errori temporanei di compatibilità tipale,
-    // mantenendo il payload completo. Idealmente aggiornare i componenti UI.
-    set({ geometry: geometryCompat as any, viewerUrl: res.viewerUrl });
+  applyDefectFix: () => {
+    // compatibility stub: no-op by default
+    try {
+      const state = get();
+      console.log('[ParametriStore] applyDefectFix stub called for', state.defect);
+    } catch (_) {}
   },
 
-  calculate() {
+  reset: () =>
+    set({
+      geometry: null,
+      viewerUrl: null,
+      press: null,
+      materialId: null,
+      calculated: null,
+      loading: false,
+      error: null,
+    }),
+
+  calculate: () => {
     const state = get();
 
-    if (!state.geometry) {
-      console.warn("Nessuna geometria disponibile (CAD non caricato).");
-      return;
-    }
-    if (!state.pressaId || !state.screwDiameter_mm) {
-      console.warn("Seleziona pressa Arburg e diametro vite prima del calcolo.");
-      return;
-    }
-    if (!state.materialeId) {
-      console.warn("Seleziona materiale prima del calcolo.");
-      return;
+    const { geometry, press, materialId } = state;
+
+    // Support legacy and new geometry shapes: prefer `volumePezzo_cm3` when present,
+    // fallback to `volumeCm3` for older code.
+    const pieceVolume = (geometry as any)?.volumePezzo_cm3 ?? (geometry as any)?.volumePezzo ?? geometry?.volumeCm3 ?? null;
+
+    // Validazione geometria: materozza NON obbligatoria
+    if (
+      !geometry ||
+      typeof pieceVolume !== "number" ||
+      pieceVolume <= 0
+    ) {
+      const error = "Geometria non valida: volume pezzo mancante o nullo.";
+      console.warn("[ParametriStore] calculate: " + error);
+      set({ error, calculated: null });
+      return null;
     }
 
-    // Mappa pressa Arburg -> MachineInput
-    const machine = getMachineInputFromArburg(
-      state.pressaId,
-      state.screwDiameter_mm
+    // Normalizza volume totale anche senza materozza
+    // normalise geometry into a `usedGeometry` object for the computation
+    let usedGeometry: any = geometry;
+    try {
+      const volP = Number(pieceVolume ?? 0);
+      const volMater = (geometry as any)?.volumeMaterozza_cm3 ?? (geometry as any)?.volumeMaterozza ?? 0;
+      const normalized = {
+        ...(geometry as any),
+        // provide both legacy and new fields
+        volumePezzo_cm3: volP,
+        volumeTotale_cm3: volP + (volMater ?? 0),
+        // keep a legacy numeric field expected by some callers
+        volumeCm3: volP,
+        thicknessAvgMm: (geometry as any)?.spessoreMedio_mm ?? (geometry as any)?.thicknessAvgMm ?? null,
+      };
+      // write normalized geometry back to store (immutable update)
+      set({ geometry: normalized });
+      usedGeometry = normalized;
+    } catch (e) {
+      // ignore normalisation errors, validation already passed
+      usedGeometry = geometry as any;
+    }
+
+    if (!press || !press.pressaId) {
+      const error = "Pressa non selezionata.";
+      console.warn("[ParametriStore] calculate: " + error);
+      set({ error, calculated: null });
+      return null;
+    }
+
+    if (!materialId) {
+      const error = "Materiale non selezionato.";
+      console.warn("[ParametriStore] calculate: " + error);
+      set({ error, calculated: null });
+      return null;
+    }
+
+    const machineInput = getMachineInputFromArburg(
+      press.pressaId,
+      press.screwDiameter_mm ?? undefined
     );
-    if (!machine) {
-      console.warn(
-        `Nessun MachineInput trovato per pressa=${state.pressaId}, vite=${state.screwDiameter_mm}mm`
-      );
-      return;
+
+    if (!machineInput) {
+      const error = `Pressa o vite non trovata nel catalogo Arburg (id=${press.pressaId}).`;
+      console.warn("[ParametriStore] calculate: " + error);
+      set({ error, calculated: null });
+      return null;
     }
 
-    // Mappa materiale -> MaterialInput
-    const material = getMaterialInput(state.materialeId);
-    if (!material) {
-      console.warn(`Materiale non trovato: ${state.materialeId}`);
-      return;
+    const materialInput = getMaterialInput(materialId);
+    if (!materialInput) {
+      const error = `Materiale non trovato nel catalogo (id=${materialId}).`;
+      console.warn("[ParametriStore] calculate: " + error);
+      set({ error, calculated: null });
+      return null;
     }
 
-    const input = {
-      geometry: state.geometry,
-      machine,
-      material,
-    };
+    try {
+      set({ loading: true, error: null });
 
-    const result = calcolaParametri(input as any);
-    set({ calculated: result });
-    return result ?? null;
-  },
+      const result = calcolaParametri({
+        geometry: {
+          volumeCm3: (usedGeometry as any).volumePezzo_cm3 ?? (usedGeometry as any).volumeCm3 ?? 0,
+          thicknessAvgMm: (usedGeometry as any).thicknessAvgMm ?? (usedGeometry as any).spessoreMedio_mm ?? null,
+          bbox: (usedGeometry as any).bbox ?? null,
+        },
+        machine: machineInput,
+        material: materialInput,
+      } as any) as CalcOutput;
 
-  applyDefectFix() {
-    const state = get();
-    if (!state.defect || !state.calculated) return;
+      set({
+        calculated: result,
+        loading: false,
+        error: null,
+      });
 
-    const rule = defectRules[state.defect];
-    if (!rule) {
-      console.warn(`Nessuna regola DefectAI per: ${state.defect}`);
-      return;
+      console.log("[ParametriStore] calculate: OK", result);
+      return result;
+    } catch (err: any) {
+      console.error("[ParametriStore] calculate: errore", err);
+      const message =
+        typeof err?.message === "string"
+          ? err.message
+          : "Errore imprevisto nel calcolo parametri.";
+      set({ loading: false, error: message, calculated: null });
+      return null;
     }
-
-    const updated = rule(state.calculated);
-    set({ calculated: updated });
   },
 }));
 

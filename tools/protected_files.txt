@@ -3,6 +3,5 @@ src/cad/cadPipeline.ts
 src/engine/calcEngine.ts
 src/data/arburgPressCatalog.ts
 src/data/materialCatalog.ts
-src/store/modelStore.ts
 src/store/analysisStore.ts
 src/store/parametriStore.ts

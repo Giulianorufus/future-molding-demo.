@@ -2,49 +2,10 @@ import React from "react";
 import { useParametriStore } from "../../store/parametriStore";
 
 export default function CalculatedParameters({ result }: { result?: any }) {
-  const geometry = useParametriStore((s) => s.geometry);
-  const storeResult = useParametriStore((s: any) => (s.calculated ?? s.result));
+  const storeResult = useParametriStore((s: any) => s.calculated);
+  const results = storeResult ?? result;
 
-  const results = result ?? storeResult ?? {};
-
-  // Geometry fallback mapping
-  const volumePezzo = results.pieceVolumeCm3 ?? geometry?.volumePezzo_cm3 ?? results.volumePezzo ?? "--";
-  const volumeMaterozza = results.runnerVolumeCm3 ?? geometry?.volumeMaterozza_cm3 ?? results.volumeMaterozza ?? "--";
-  const volumeTotale = results.shotVolumeCm3 ?? (typeof volumePezzo === 'number' && typeof volumeMaterozza === 'number' ? Math.round((volumePezzo + volumeMaterozza) * 100) / 100 : results.volumeTotale ?? "--");
-  const areaProiettata = geometry?.areaProiettata_cm2 ?? results.projAreaCm2 ?? results.areaProiettata ?? "--";
-  const spessoreMedio = geometry?.spessoreMedio_mm ?? results.spessoreMedio ?? results.spessoreMedio_mm ?? "--";
-
-  // Injection mappings
-  const velIniezione = results.velIniezione ?? results.suggestedInjectionSpeedCm3s ?? results.injectionSpeedCm3s ?? "--";
-  const pressioneIniezione = results.pressioneIniezione ?? results.computedInjectionPressure_bar ?? results.holdingPressureBar ?? "--";
-  const fillTime = results.fillTime ?? results.fillTime_s ?? "--";
-
-  // VP
-  const vp = results.vp ?? results.vpComputed_cm3 ?? results.vpVolumeCm3 ?? "--";
-
-  // Pack
-  const packPressione = results.packPressione ?? results.packPressureBar ?? results.packPressureBar ?? "--";
-  const packTempo = results.packTempo ?? results.packTimeComputedSec ?? results.packTimeSec ?? "--";
-
-  // Cooling
-  const coolingTime = results.coolingTime ?? results.coolingFromThicknessSec ?? results.coolingTimeSec ?? "--";
-
-  // Plastificazione
-  const velocitaVite = results.velocitaVite ?? results.screwRpm ?? "--";
-  const contropressione = results.contropressione ?? results.backPressureBar ?? "--";
-  const tempoDosatura = results.tempoDosatura ?? results.plastificationTimeSec ?? results.plastTime ?? "--";
-
-  // Tonnellaggio
-  const tonnellaggio = results.tonnellaggio ?? results.requiredTonnage_t ?? results.requiredTonnage_t ?? "--";
-  const tonnellaggioPressa = results.tonnellaggioPressa ?? (typeof results.clampForceTon === 'number' ? Math.round(results.clampForceTon * 9.80665) : results.tonnellaggioPressa ?? "--");
-
-  // Temperature
-  const temperature = results.temperature ?? results.temperatureSuggestion ?? {};
-
-  // Suggerimenti
-  const suggerimenti = results.suggerimenti ?? results.suggestions ?? [];
-
-  if (!result && !storeResult) {
+  if (!results) {
     return (
       <div className="text-center text-gray-400 p-8">
         Nessun calcolo disponibile.
@@ -52,6 +13,34 @@ export default function CalculatedParameters({ result }: { result?: any }) {
       </div>
     );
   }
+
+  // Map common fields from the store's calculated output
+  const volumePezzo = results.pieceVolumeCm3 ?? results.volumePezzo ?? results.volumePezzo_cm3 ?? "--";
+  const volumeMaterozza = results.runnerVolumeCm3 ?? results.volumeMaterozza ?? results.volumeMaterozza_cm3 ?? "--";
+  const volumeTotale = results.shotVolumeCm3 ?? results.volumeTotale ?? results.volumeTotale_cm3 ?? "--";
+  const areaProiettata = results.projAreaCm2 ?? results.areaProiettata ?? "--";
+  const spessoreMedio = results.spessoreMedio ?? results.spessoreMedio_mm ?? "--";
+
+  const velIniezione = results.velIniezione ?? results.suggestedInjectionSpeedCm3s ?? results.injectionSpeed_cm3s ?? "--";
+  const pressioneIniezione = results.pressioneIniezione ?? results.computedInjectionPressure_bar ?? results.injectionPressure_bar ?? "--";
+  const fillTime = results.fillTime ?? results.fillTime_s ?? "--";
+
+  const vp = results.vp ?? results.vpComputed_cm3 ?? results.vp_cm3 ?? "--";
+
+  const packPressione = results.packPressione ?? results.pack_bar ?? results.packPressureBar ?? "--";
+  const packTempo = results.packTempo ?? results.pack_s ?? results.packTimeSec ?? "--";
+
+  const coolingTime = results.coolingTime ?? results.cooling_s ?? "--";
+
+  const velocitaVite = results.velocitaVite ?? results.rpm ?? results.screwRpm ?? "--";
+  const contropressione = results.contropressione ?? results.backpressure_bar ?? results.backPressureBar ?? "--";
+  const tempoDosatura = results.tempoDosatura ?? results.plastificationTimeSec ?? "--";
+
+  const tonnellaggio = results.tonnellaggio ?? results.requiredTonnage_t ?? "--";
+  const tonnellaggioPressa = results.tonnellaggioPressa ?? results.clampForceTon ?? "--";
+
+  const temperature = results.temperature ?? {};
+  const suggerimenti = results.suggerimenti ?? results.suggestions ?? [];
 
   return (
     <div className="space-y-6 p-6">

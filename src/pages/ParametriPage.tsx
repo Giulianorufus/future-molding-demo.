@@ -9,8 +9,8 @@ import { addDrawing, loadDrawings, type DrawingMeta } from "@/services/storage";
 import { saveDrawingFile, getDrawingBlob } from "@/services/db";
 import { analyzeBlob } from "@/utils/simpleAnalysis";
 import DrawingPreview from "@/components/Parametri/DrawingPreview";
-import { useModelStore } from '@/store/modelStore';
-import { useAnalysisStore } from '@/store/analysisStore';
+// modelStore references removed: use parametriStore as single source-of-truth
+// analysisStore not needed; ParametriPage keeps its own analysis and mirrors into parametriStore
 import { sanitizeFileName } from '@/utils/sanitizeFileName';
 import { startCadPipeline } from '@/cad/cadPipeline';
 import { useCadStore } from '@/store/cadStore';
@@ -19,8 +19,9 @@ import { useDrawingStore } from '@/store/drawingStore';
 import { getDrawingURL } from '@/services/db';
 import { useParametriStore } from '@/store/parametriStore';
 
-import { calculateInjection } from "@/services/calculationEngine";
+// calculation is delegated to parametriStore
 import { exportToJSON } from '@/utils/export';
+import { useDrawingUpload } from '@/hooks/useDrawingUpload';
 
 // --- helper: call server analyze endpoint (module scope to keep hooks stable) ---
 async function analyzeServerFile(file: Blob | File, filename?: string) {
@@ -88,31 +89,28 @@ async function convertServerFile(file: Blob | File, filename?: string) {
 
 // Funzione centrale: aggiorna store in modo atomico
 function handleAnalysisDone(result: any) {
-  const { setAnalysis, setViewerUrl } = useModelStore.getState();
-
+  // Mirror analysis results into parametriStore (single source of truth)
+  const paramStore = useParametriStore.getState();
   if (!result) {
     console.warn("handleAnalysisDone: risultato analisi nullo");
-    setAnalysis(null);
-    setViewerUrl(null);
+    try { paramStore.setGeometry(null); } catch (_) {}
+    try { paramStore.setViewerUrl(null); } catch (_) {}
     return;
   }
 
-  if (!result.viewerUrl) {
-    console.warn("handleAnalysisDone: viewerUrl mancante, viewer disattivato");
-  }
-
   try {
-    setAnalysis(result as any);
+    const geom = {
+      volumePezzo_cm3: result.volume_cm3 ?? result.volume ?? null,
+      volumeMaterozza_cm3: 0,
+      volumeTotale_cm3: result.volume_cm3 ?? result.volume ?? null,
+      areaProiettata_cm2: result.projectedArea_cm2 ?? result.area_cm2 ?? null,
+      spessoreMedio_mm: result.thickness_mm?.mean ?? result.thickness_mm ?? null,
+    };
+    paramStore.setGeometry(geom as any);
   } catch (e) {
-    console.warn('handleAnalysisDone: setAnalysis failed', e);
+    console.warn('handleAnalysisDone: setGeometry failed', e);
   }
-  try {
-    // Preserve existing viewerUrl unless the analysis result explicitly provides one
-    const current = useModelStore.getState().viewerUrl ?? null;
-    setViewerUrl(result.viewerUrl ?? current ?? null);
-  } catch (e) {
-    console.warn('handleAnalysisDone: setViewerUrl failed', e);
-  }
+  try { paramStore.setViewerUrl(result.viewerUrl ?? null); } catch (_) {}
 }
 
 export default function ParametriPage() {
@@ -149,12 +147,12 @@ export default function ParametriPage() {
       try {
         const urlRec = await getDrawingURL(selectedDrawingId);
         if (urlRec) {
-          // set viewer URL in unified model store (legacy model3D shape removed)
-          useModelStore.getState().setViewerUrl(urlRec.url);
+          // set viewer URL in parametriStore (single source-of-truth for viewer)
+          try { useParametriStore.getState().setViewerUrl(urlRec.url); } catch (_) {}
         }
-      } catch (_) {}
+      } catch (_) { }
       try {
-      // prefer server-side analysis first
+        // prefer server-side analysis first
         try {
           const metaName = drawings.find((d) => d.id === selectedDrawingId)?.name;
           const serverResult = await analyzeServerFile(blob.blob, metaName ?? undefined);
@@ -173,8 +171,7 @@ export default function ParametriPage() {
           const th = res.thickness_mm?.mean ?? null;
           const analysisObj = { volume_cm3: vol ?? undefined, thickness_mm: th ?? undefined };
           setAnalysis(analysisObj);
-          applyAnalysisToModelStore({ volume: vol ?? undefined, thickness: th ?? undefined });
-          // mirror into parametriStore geometry for calculation
+          // Mirror into parametriStore geometry for calculation (single source-of-truth)
           try {
             const geom = {
               volumePezzo_cm3: vol ?? null,
@@ -183,11 +180,11 @@ export default function ParametriPage() {
               areaProiettata_cm2: null,
               spessoreMedio_mm: th ?? null,
             };
-            paramStore.setGeometry(geom as any);
+            useParametriStore.getState().setGeometry(geom as any);
           } catch (_) {}
         } else {
           setAnalysis(null);
-          applyAnalysisToModelStore({ volume: undefined, thickness: undefined });
+          try { useParametriStore.getState().setGeometry(null); } catch (_) {}
         }
       } catch {
         setAnalysis(null);
@@ -201,71 +198,25 @@ export default function ParametriPage() {
   }, [analysis, press, selectedMaterial]);
 
   const materials = useMemo(() => getMaterials(), []);
-  const { setAnalysis: setModelAnalysis, setViewerUrl: setModelViewerUrl } = useModelStore();
+  // modelStore usage removed here; parametriStore is the single source of truth
 
-  function applyAnalysisToModelStore(opts: { volume?: number | null; thickness?: number | null; bbox?: { x: number; y: number; z: number } | null; format?: string; viewerUrl?: string | null }) {
-    const currentViewer = useModelStore.getState().viewerUrl ?? null;
-    const viewer = opts.viewerUrl ?? currentViewer ?? null;
-    const res = {
-      format: (opts.format as any) ?? (viewer ? 'glb' : 'stl'),
-      volumeCm3: opts.volume ?? null,
-      areaApproxCm2: null,
-      thicknessAvgMm: opts.thickness ?? null,
-      bbox: opts.bbox ?? { x: 0, y: 0, z: 0 },
-      viewerUrl: viewer ?? '',
-    } as CadAnalysisResult;
-    try { setModelAnalysis(res); } catch (_) {}
-    try { setModelViewerUrl(viewer); } catch (_) {}
-  }
+  const { handleUpload: uploadHook, isUploading } = useDrawingUpload();
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const meta = addDrawing({ name: file.name, size: file.size, type: file.type });
-      await saveDrawingFile(meta.id, file);
+
+    // Use shared hook
+    const id = await uploadHook(file);
+
+    if (id) {
+      // Update local state to reflect the new drawing
+      const meta = { id, name: file.name, size: file.size, type: file.type, uploadedAt: Date.now() };
       setDrawings((prev) => [meta, ...prev]);
-      setSelectedDrawingId(meta.id);
-      toast({ title: "Disegno caricato", description: `${file.name} pronto per il calcolo` });
-      // Important: register file in the unified model store so downstream pages (Difetti, viewers)
-      // see that a file is loaded. This MUST be set, otherwise analysis/preview won't run.
-      try { useModelStore.getState().setFile(file); } catch (_) {}
-      // set model store so Difetti page can show the uploaded drawing (or placeholder)
-      try {
-        const urlRec = await getDrawingURL(meta.id);
-        const ext = file.name.split('.').pop()?.toLowerCase() || '';
-        const safeName = sanitizeFileName(meta.name || file.name || 'upload');
-        if (urlRec) {
-          useModelStore.getState().setViewerUrl(urlRec.url);
-        } else {
-          const tmp = URL.createObjectURL(file);
-          useModelStore.getState().setViewerUrl(tmp);
-        }
-      } catch (_) {
-        try { const tmp = URL.createObjectURL(file); useModelStore.getState().setViewerUrl(tmp); } catch(_){ }
-      }
-      // also set drawingStore file so AI assistant and viewers can request decrypted blob
-      try { void useDrawingStore.getState().setFile(file); } catch (_) {}
-      // Start unified CAD pipeline (analyze + set viewer URL in cadStore)
-      try {
-        const pipelineResult = await startCadPipeline(file);
-        if (pipelineResult?.success) {
-          const cadState = useCadStore.getState();
-          // Mirror essential values into the legacy model store so downstream code keeps working
-          applyAnalysisToModelStore({ volume: cadState.volumeCm3 ?? undefined, thickness: cadState.thicknessAvgMm ?? undefined, viewerUrl: cadState.viewerUrl ?? undefined, format: file.name.split('.').pop() ?? undefined });
-        } else {
-          // Pipeline failed: keep existing viewer URL (objectURL) and let user enter manual inputs
-          const cadState = useCadStore.getState();
-          applyAnalysisToModelStore({ volume: cadState.volumeCm3 ?? undefined, thickness: cadState.thicknessAvgMm ?? undefined, viewerUrl: cadState.viewerUrl ?? undefined });
-        }
-      } catch (err) {
-        console.error('Errore pipeline CAD:', err);
-      }
-    } catch (err) {
-      toast({ title: "Errore caricamento", description: String(err ?? "Impossibile salvare il file"), variant: "destructive" });
-    } finally {
-      e.target.value = "";
+      setSelectedDrawingId(id);
     }
+
+    e.target.value = "";
   }
 
   function handleCalc() {
@@ -289,12 +240,26 @@ export default function ParametriPage() {
     }
 
     // mirror selections into param store
-    try { paramStore.setPressaId(press?.pressId ?? null); } catch (_) {}
-    try { paramStore.setScrewDiameter(press?.screwDiameter_mm ?? null); } catch (_) {}
-    try { paramStore.setMaterialeId(selectedMaterial?.id ?? null); } catch (_) {}
+    try { paramStore.setPressaId(press?.pressId ?? null); } catch (_) { }
+    try { paramStore.setScrewDiameter(press?.screwDiameter_mm ?? null); } catch (_) { }
+    try { paramStore.setMaterialeId(selectedMaterial?.id ?? null); } catch (_) { }
+
+    // NEW: Ensure geometry is set in store (handling manual inputs or fallback)
+    try {
+      const geometry = {
+        volumePezzo_cm3: volumeCavita,
+        volumeMaterozza_cm3: 0,
+        volumeTotale_cm3: volumeCavita,
+        areaProiettata_cm2: null, // Engine will estimate if null
+        spessoreMedio_mm: spessore,
+      };
+      paramStore.setGeometry(geometry as any);
+    } catch (e) {
+      console.warn("Failed to sync geometry to store", e);
+    }
 
     const res = paramStore.calculate();
-    try { setCalculationResult(res as any); } catch (_) {}
+    try { setCalculationResult(res as any); } catch (_) { }
     if (res && (res as any).success) {
       toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
     } else if (res) {
@@ -302,51 +267,39 @@ export default function ParametriPage() {
     }
   }
 
-  // Auto-calc: esegue il calcolo solo quando l'analisi è disponibile
-  async function autoCalculate() {
-    if (!analysis) return;
-    if (!press?.modelId) return;
-    if (!selectedMaterial) return;
-    if (autoLoading) return;
-
-    setAutoError(null);
-    setAutoLoading(true);
-    try {
-      const spessore = (analysis?.thickness_mm) ?? manual.thickness ?? 2;
-      const volumeCavita = (analysis?.volume_cm3) ?? manual.volume ?? 10;
-      const cushion = manual.cushion ?? 1;
-
-      // mirror selections into param store
-      try { paramStore.setPressaId(press?.pressId ?? null); } catch (_) {}
-      try { paramStore.setScrewDiameter(press?.screwDiameter_mm ?? null); } catch (_) {}
-      try { paramStore.setMaterialeId(selectedMaterial?.id ?? null); } catch (_) {}
-
-      const res = paramStore.calculate();
-      try { setCalculationResult(res as any); } catch (_) {}
-      if (res && (res as any).success) {
-        toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
-      } else if (res) {
-        toast({ title: "Errore di calcolo", description: ((res as any).errors ?? []).join('; '), variant: "destructive" });
-      }
-    } catch (err: any) {
-      setAutoError(String(err?.message ?? err));
-    } finally {
-      setAutoLoading(false);
-    }
-  }
+  // Auto-calc: trigger when parametriStore has geometry, press and material
+  const _geometry = useParametriStore((s) => s.geometry);
+  const _pressaId = useParametriStore((s) => s.pressaId);
+  const _materialeId = useParametriStore((s) => s.materialeId);
 
   useEffect(() => {
-    if (!analysis) return;
-    const selectedMachineId = press?.modelId ?? null;
-    const selectedMaterialId = selectedMaterial?.id ?? null;
-    if (!selectedMachineId) return;
-    if (!selectedMaterialId) return;
+    if (!(_geometry && _pressaId && _materialeId)) return;
     if (autoLoading) return;
 
-    void autoCalculate();
-  }, [analysis, press?.modelId, selectedMaterial?.id, autoLoading]);
+    let mounted = true;
+    (async () => {
+      setAutoError(null);
+      setAutoLoading(true);
+      try {
+        const res = useParametriStore.getState().calculate();
+        if (!mounted) return;
+        try { setCalculationResult(res as any); } catch (_) {}
+        if (res && (res as any).success) {
+          toast({ title: "Calcolo completato", description: `Peso: ${(res as any).weight} g • Ciclo: ${(res as any).cycleTime} s` });
+        } else if (res) {
+          toast({ title: "Errore di calcolo", description: ((res as any).errors ?? []).join('; '), variant: "destructive" });
+        }
+      } catch (err: any) {
+        setAutoError(String(err?.message ?? err));
+      } finally {
+        if (mounted) setAutoLoading(false);
+      }
+    })();
 
-  
+    return () => { mounted = false; };
+  }, [_geometry, _pressaId, _materialeId]);
+
+
 
   return (
     <div className="max-w-5xl mx-auto p-4">
@@ -383,6 +336,9 @@ export default function ParametriPage() {
               // Mantieni anche lo store sincronizzato per compatibilità
               setMarca((v.pressId as any) ?? "");
               setModello(v.modelId ?? "");
+              // Mirror selection into parametriStore
+              try { useParametriStore.getState().setPressaId(v?.pressId ?? null); } catch (_) {}
+              try { useParametriStore.getState().setScrewDiameter(v?.screwDiameter_mm ?? null); } catch (_) {}
             }}
             disabled={!selectedDrawingId}
           />
@@ -400,6 +356,7 @@ export default function ParametriPage() {
             onChange={(e) => {
               const mat = materials.find((x) => x.id === e.target.value) ?? null;
               setSelectedMaterial(mat as IMaterial | null);
+              try { useParametriStore.getState().setMaterialeId(mat?.id ?? null); } catch (_) {}
             }}
             disabled={!selectedDrawingId}
           >

@@ -1,7 +1,22 @@
 import { useState } from "react";
+import { useDrawingUpload } from "@/hooks/useDrawingUpload";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Disegni() {
   const [file, setFile] = useState<File | null>(null);
+  const { handleUpload, isUploading } = useDrawingUpload();
+  const { toast } = useToast();
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    if (f) {
+      const id = await handleUpload(f);
+      if (id) {
+        toast({ title: "Caricamento completato", description: "Il disegno è ora disponibile in Parametri e Difetti." });
+      }
+    }
+  };
 
   return (
     <div>
@@ -13,11 +28,14 @@ export default function Disegni() {
         </label>
         <input
           type="file"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          onChange={onFileChange}
+          disabled={isUploading}
           className="bg-gray-100 border border-gray-300 rounded px-4 py-2 w-full"
         />
 
-        {file && (
+        {isUploading && <p className="mt-2 text-sm text-blue-600">Caricamento e analisi in corso...</p>}
+
+        {file && !isUploading && (
           <p className="mt-3 text-blue-700 font-semibold">
             File selezionato: {file.name}
           </p>

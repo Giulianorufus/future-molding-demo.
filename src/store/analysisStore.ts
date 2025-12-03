@@ -1,7 +1,8 @@
 // src/store/analysisStore.ts
 // Alias per mantenere compatibilità, ma usiamo UN SOLO store globale.
 
-import { useModelStore } from "./modelStore";
+import { useParametriStore } from "./parametriStore";
 
-export const useAnalysisStore = useModelStore;
-export type AnalysisStore = ReturnType<typeof useModelStore>;
+// AnalysisStore is now an alias to parametriStore for compatibility
+export const useAnalysisStore = useParametriStore;
+export type AnalysisStore = ReturnType<typeof useParametriStore>;

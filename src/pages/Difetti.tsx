@@ -1,67 +1,57 @@
 import React from "react";
-import { useParametriStore } from "../store/parametriStore";
-import DEFECT_RULES from "../data/defectRules";
-import AIAssistant from "../components/AIAssistant";
-import { useCadStore } from "@/store/cadStore";
-import { ThreeViewer } from "@/components/ThreeViewer";
+import { useDrawingStore } from "@/store/drawingStore";
+import { useParametriStore as useParamsStore } from "@/store/parametriStore";
 
 export default function Difetti() {
-  // Read CAD unified store
-  const { status, viewerUrl, volumeCm3, thicknessAvgMm, error } = useCadStore((s) => ({ status: s.status, viewerUrl: s.viewerUrl, volumeCm3: s.volumeCm3, thicknessAvgMm: s.thicknessAvgMm, error: s.error }));
+  // Drawing store (nuovo flusso)
+  const drawing = useDrawingStore((s) => ({
+    glbUrl: s.glbUrl,
+    viewerUrl: (s as any).viewerUrl,
+    modelUrl: s.modelUrl,
+    geometry: s.geometry,
+    status: (s as any).status,
+    error: s.error,
+  }));
 
-  const { calculated, applyDefectFix, setDefect } = useParametriStore((s: any) => ({ calculated: s.calculated, applyDefectFix: s.applyDefectFix, setDefect: s.setDefect }));
+  // Parametri store
+  const params = useParamsStore((s) => (s as any).params);
 
-  const difettiList = DEFECT_RULES;
-
-  if (status !== "ready" || !viewerUrl) {
-    return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold mb-4">Difetti</h1>
-        <p className="text-gray-600">Carica un disegno nella pagina Parametri.</p>
-      </div>
-    );
-  }
+  // Determina l’URL del modello
+  const modelUrl = drawing.glbUrl || drawing.viewerUrl || drawing.modelUrl || null;
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Difetti</h1>
+      <h1 className="text-3xl font-bold">DIAGNOSTICA DIFETTI</h1>
 
-      <div className="grid grid-cols-[2fr,1.2fr] gap-4">
-        <div>
-          <ThreeViewer viewerUrl={viewerUrl} />
-        </div>
-
-        <div className="border rounded p-4 bg-white shadow">
-          <h2 className="text-xl font-semibold mb-4">Seleziona un difetto</h2>
-            <ul className="space-y-2">
-            {difettiList.map((d) => (
-              <li key={d.id}>
-                <button
-                  className="bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded"
-                  onClick={() => {
-                    // apply defect via parametri store
-                    try { setDefect(d.id); } catch (_) {}
-                    try { applyDefectFix(); } catch (_) {}
-                    alert(`Applicata correzione per '${d.label}'. Controlla Parametri.`);
-                  }}
-                >
-                  {d.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-6">
-            <AIAssistant file={null} />
-          </div>
-        </div>
+      {/* DRAWING STORE */}
+      <div className="p-4 bg-yellow-100 border-2 border-yellow-600 rounded">
+        <h2 className="font-semibold mb-2 text-lg">drawingStore</h2>
+        <pre className="text-xs bg-white p-2 border rounded overflow-auto max-h-80">
+{JSON.stringify(drawing, null, 2)}
+        </pre>
       </div>
-      {calculated && (
-        <div className="mt-4 text-sm text-gray-800">
-          <p>Pressione iniezione: {(calculated as any).injectionPressure_bar ?? '-'} bar</p>
-          <p>Velocità iniezione: {(calculated as any).injectionSpeed_cm3s ?? '-'} cm³/s</p>
-          <p>VP: {(calculated as any).vp_cm3 ?? '-'} cm³</p>
-          <p>Tempo raffreddamento: {(calculated as any).cooling_s ?? '-'} s</p>
+
+      {/* PARAMS STORE */}
+      <div className="p-4 bg-blue-100 border-2 border-blue-600 rounded">
+        <h2 className="font-semibold mb-2 text-lg">paramsStore</h2>
+        <pre className="text-xs bg-white p-2 border rounded overflow-auto max-h-80">
+{JSON.stringify(params, null, 2)}
+        </pre>
+      </div>
+
+      {/* MODEL URL RISOLTO */}
+      <div className="p-4 bg-green-100 border-2 border-green-600 rounded">
+        <h2 className="font-semibold mb-2 text-lg">modelUrl RISOLTO</h2>
+        <p className="font-mono text-sm">
+          {modelUrl ? modelUrl : "NULL"}
+        </p>
+      </div>
+
+      {/* ERRORI */}
+      {drawing.error && (
+        <div className="p-4 bg-red-100 border-2 border-red-600 rounded">
+          <h2 className="font-semibold mb-2 text-lg">ERRORE STORE</h2>
+          <p>{drawing.error}</p>
         </div>
       )}
     </div>

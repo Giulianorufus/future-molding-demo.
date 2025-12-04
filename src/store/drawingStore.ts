@@ -23,10 +23,12 @@ export type DrawingState = {
 
   // new drawing / geometry canonical fields
   glbUrl: string | null;
+  modelUrl: string | null; // alias compatibile usato in alcune pagine
   geometry: GeometryData | null;
   isLoading: boolean;
   error: string | null;
   setGlbUrl: (url: string | null) => void;
+  setModelUrl: (url: string | null) => void;
   setGeometry: (geo: GeometryData | null) => void;
   setIsLoading: (flag: boolean) => void;
   setError: (msg: string | null) => void;
@@ -102,10 +104,12 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
 
   // canonical drawing fields
   glbUrl: null,
+  modelUrl: null,
   geometry: null,
   isLoading: false,
   error: null,
-  setGlbUrl: (glbUrl) => set({ glbUrl }),
+  setGlbUrl: (glbUrl: string | null) => set({ glbUrl }),
+  setModelUrl: (modelUrl: string | null) => set({ modelUrl }),
   setGeometry: (geometry) => set({ geometry }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),

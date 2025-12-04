@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useDrawingStore } from "@/store/drawingStore";
 
 export type CadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -46,6 +47,15 @@ export const useCadStore = create<CadState>((set, get) => ({
       }
     } catch (_) {}
     set({ viewerUrl: viewerUrl ?? null, volumeCm3: volumeCm3 ?? null, areaProjCm2: areaProjCm2 ?? null, thicknessAvgMm: thicknessAvgMm ?? null, status: 'ready', error: null });
+
+    // --- PATCH: sincronizza con drawingStore ---
+    try {
+      const ds = useDrawingStore.getState();
+      if (viewerUrl) {
+        try { ds.setGlbUrl(viewerUrl); } catch (_) {}
+        try { if (typeof ds.setModelUrl === 'function') ds.setModelUrl(viewerUrl); } catch (_) {}
+      }
+    } catch (_) {}
   },
 
   setError: (err: string) => set({ status: 'error', error: err }),

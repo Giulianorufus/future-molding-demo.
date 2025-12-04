@@ -200,8 +200,10 @@ export const useParametriStore = create<ParametriState>((set, get) => ({
         volumeCm3: volP,
         thicknessAvgMm: (geometry as any)?.spessoreMedio_mm ?? (geometry as any)?.thicknessAvgMm ?? null,
       };
-      // write normalized geometry back to store (immutable update)
-      set({ geometry: normalized });
+      // keep normalized geometry local to avoid triggering store subscribers
+      // (writing normalized geometry back to the store here caused an
+      // infinite update loop when callers auto-trigger `calculate()` on
+      // geometry changes). Do not set() here; return normalized as usedGeometry.
       usedGeometry = normalized;
     } catch (e) {
       // ignore normalisation errors, validation already passed

@@ -26,10 +26,17 @@ const ParametriPage: React.FC = () => {
   const setPress = useParametriStore((s) => s.setPress);
   const materialId = useParametriStore((s) => s.materialId);
   const setMaterial = useParametriStore((s) => s.setMaterial);
+  // Keep calculate access but avoid placing it in effect deps
   const calculate = useParametriStore((s) => s.calculate);
   const calculated = useParametriStore((s) => s.calculated);
   const loading = useParametriStore((s) => s.loading);
   const error = useParametriStore((s) => s.error);
+
+  // Primitive selectors to avoid object identity changes triggering effects
+  const geometryVolume = useParametriStore((s) => (s.geometry as any)?.volumeCm3 ?? (s.geometry as any)?.volumePezzo_cm3 ?? null);
+  const geometryReadyFlag = !!geometryVolume && geometryVolume > 0;
+  const pressId = usePressStore((s) => (s as any).selectedPress?.id ?? (s as any).currentPress?.id ?? null);
+  const screwDiameter = usePressStore((s) => (s as any).selectedScrewDiameter_mm ?? (s as any).screwDiameter_mm ?? null);
 
   // Se Inputs già gestisce la scelta materiale → Inputs deve chiamare setMaterial().
   // Se la scelta materiale è in un altro store, qui devi fare il bridge.
@@ -56,7 +63,7 @@ const ParametriPage: React.FC = () => {
     if (cadViewerUrl) {
       setViewerUrl(cadViewerUrl);
     }
-  }, [cadAnalysis, cadViewerUrl, setGeometry, setViewerUrl]);
+  }, [cadAnalysis, cadViewerUrl]);
 
   // 2) Bridge Pressa → parametriStore
   useEffect(() => {
@@ -71,26 +78,35 @@ const ParametriPage: React.FC = () => {
       id: (selectedPress as any).id,
       screwDiameter_mm: selectedScrewDiameter,
     });
-  }, [selectedPress, selectedScrewDiameter, setPress]);
+  }, [selectedPress?.id, selectedScrewDiameter]);
 
   // 3) QUI DEVI ASSICURARTI CHE materialId VENGA POPOLATO
   //    SE Inputs.tsx già chiama useParametriStore().setMaterial(id), non serve fare altro.
   //    Se invece materiale viene salvato in un altro store, devi fare il bridge come fatto per la pressa.
 
   // 4) Auto-calcolo quando ho: geometria + pressa + materiale
+  // Use only primitives in deps to avoid infinite re-render loops caused by
+  // object identity changes (geometry, selectedPress, etc.). Also avoid
+  // placing the `calculate` function itself in deps — Zustand guarantees its
+  // stability.
   useEffect(() => {
-    if (!geometry || !geometry.volumeCm3 || geometry.volumeCm3 <= 0) return;
-    if (!selectedPress || !(selectedPress as any).id) return;
-    if (!materialId) return;
+    const ready =
+      geometryReadyFlag &&
+      !!pressId &&
+      !!screwDiameter &&
+      !!materialId;
 
-    console.log("[ParametriPage] AUTO-CALC TRIGGERED", {
-      geometry,
-      press: selectedPress,
-      materialId,
-    });
+    if (!ready) return;
 
-    calculate();
-  }, [geometry, selectedPress, materialId, calculate]);
+    if (calculated !== null) return; // evita ricalcoli infiniti
+
+    console.log("[ParametriPage] AUTO-CALC RUN");
+    try {
+      calculate();
+    } catch (e) {
+      console.warn('[ParametriPage] calculate() failed', e);
+    }
+  }, [geometryReadyFlag, pressId, screwDiameter, materialId]);
 
   return (
     <div className="flex flex-col gap-4 p-4">

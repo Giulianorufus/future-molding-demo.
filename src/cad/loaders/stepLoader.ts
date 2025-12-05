@@ -2,7 +2,7 @@
 // Hardened STEP/IGES loader: dynamic OCCT + Three.js usage, safe fallback.
 
 import * as THREE from "three";
-import useDrawingStore from "@/store/drawingStore";
+import { useDrawingStore } from "@/stores/drawingStore";
 import type { CadAnalysisResult } from "../types";
 import { computeMeshVolume } from "../analyzers/meshVolume";
 
@@ -140,16 +140,22 @@ function probeReadResult(occt: OcctModule, data: Uint8Array, isIges: boolean): a
 
 export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "iges"): Promise<CadAnalysisResult> {
   const fmt = format ?? (file.name.split(".").pop()?.toLowerCase() === "iges" || file.name.split(".").pop()?.toLowerCase() === "igs" ? "iges" : "step");
-  const { setGlbUrl, setGeometry, setIsLoading, setError } = useDrawingStore.getState();
+  const drawing = useDrawingStore.getState();
 
-  setIsLoading(true);
+  drawing.setResult({ isLoading: true });
   try {
     const occt = await loadOcctModule();
     if (!occt) {
       const fb = fallbackResult(file, fmt);
-      setGeometry(null);
-      setGlbUrl(fb.viewerUrl);
-      setError(null);
+      drawing.setResult({
+        glbUrl: fb.viewerUrl,
+        volumeCm3: null,
+        surfaceCm2: null,
+        boundingBox: fb.bbox,
+        previewUrl: fb.viewerUrl,
+        error: null,
+        isLoading: false,
+      });
       return fb;
     }
 
@@ -159,18 +165,30 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
     const result = probeReadResult(occt, uint8, fmt === "iges");
     if (!result) {
       const fb = fallbackResult(file, fmt);
-      setGeometry(null);
-      setGlbUrl(fb.viewerUrl);
-      setError(null);
+      drawing.setResult({
+        glbUrl: fb.viewerUrl,
+        volumeCm3: null,
+        surfaceCm2: null,
+        boundingBox: fb.bbox,
+        previewUrl: fb.viewerUrl,
+        error: null,
+        isLoading: false,
+      });
       return fb;
     }
 
     const meshes: any[] = Array.isArray(result.meshes) && result.meshes.length ? result.meshes : Array.isArray(result) && result.length ? result : [];
     if (!meshes.length) {
       const fb = fallbackResult(file, fmt);
-      setGeometry(null);
-      setGlbUrl(fb.viewerUrl);
-      setError(null);
+      drawing.setResult({
+        glbUrl: fb.viewerUrl,
+        volumeCm3: null,
+        surfaceCm2: null,
+        boundingBox: fb.bbox,
+        previewUrl: fb.viewerUrl,
+        error: null,
+        isLoading: false,
+      });
       return fb;
     }
 
@@ -212,9 +230,15 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
       viewerUrl = await exportGeometryToGlbUrl(geometry);
     } catch (err) {
       const fb = fallbackResult(file, fmt);
-      setGeometry(null);
-      setGlbUrl(fb.viewerUrl);
-      setError(null);
+      drawing.setResult({
+        glbUrl: fb.viewerUrl,
+        volumeCm3: null,
+        surfaceCm2: null,
+        boundingBox: fb.bbox,
+        previewUrl: fb.viewerUrl,
+        error: null,
+        isLoading: false,
+      });
       return fb;
     }
 
@@ -223,16 +247,21 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
     }
 
     const geo = {
-      volumePezzo_cm3: volume ?? 0,
-      volumeMaterozza_cm3: null,
-      volumeTotale_cm3: (volume ?? 0) + 0,
-      areaProiettata_cm2: areaApprox,
-      spessoreMedio_mm: null,
+      volumeCm3: volume ?? 0,
+      surfaceCm2: areaApprox,
+      boundingBox: { x: size.x, y: size.y, z: size.z },
+      previewUrl: viewerUrl,
     };
 
-    setGeometry(geo);
-    setGlbUrl(viewerUrl);
-    setError(null);
+    drawing.setResult({
+      glbUrl: viewerUrl,
+      volumeCm3: geo.volumeCm3,
+      surfaceCm2: geo.surfaceCm2,
+      boundingBox: geo.boundingBox,
+      previewUrl: viewerUrl,
+      error: null,
+      isLoading: false,
+    });
 
     return {
       format: fmt,
@@ -242,15 +271,13 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
       bbox: { x: size.x, y: size.y, z: size.z },
       viewerUrl,
     };
-  } catch (err) {
-    console.warn("STEP/IGES loader error, using fallback:", err);
-    setGlbUrl(null);
-    setGeometry(null);
-    setError(err instanceof Error ? err.message : String(err));
-    return fallbackResult(file, fmt);
-  } finally {
-    setIsLoading(false);
-  }
+    } catch (err) {
+      console.warn("STEP/IGES loader error, using fallback:", err);
+      drawing.setResult({ glbUrl: null, volumeCm3: null, surfaceCm2: null, previewUrl: null, error: err instanceof Error ? err.message : String(err), isLoading: false });
+      return fallbackResult(file, fmt);
+    } finally {
+      drawing.setResult({ isLoading: false });
+    }
 }
 
 

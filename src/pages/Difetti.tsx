@@ -1,23 +1,24 @@
 import React from "react";
-import { useDrawingStore } from "@/store/drawingStore";
-import { useParametriStore as useParamsStore } from "@/store/parametriStore";
+import { useDrawingStore } from "@/stores/drawingStore";
+import { useParametriStore as useParamsStore } from "@/stores/parametriStore";
 
 export default function Difetti() {
   // Drawing store (nuovo flusso)
   const drawing = useDrawingStore((s) => ({
     glbUrl: s.glbUrl,
-    viewerUrl: (s as any).viewerUrl,
-    modelUrl: s.modelUrl,
-    geometry: s.geometry,
-    status: (s as any).status,
+    previewUrl: s.previewUrl,
+    volumeCm3: s.volumeCm3,
+    surfaceCm2: s.surfaceCm2,
+    boundingBox: s.boundingBox,
+    isLoading: s.isLoading,
     error: s.error,
   }));
 
   // Parametri store
-  const params = useParamsStore((s) => (s as any).params);
+  const params = useParamsStore((s) => s.result);
 
   // Determina l’URL del modello
-  const modelUrl = drawing.glbUrl || drawing.viewerUrl || drawing.modelUrl || null;
+  const modelUrl = drawing.glbUrl || drawing.previewUrl || null;
 
   return (
     <div className="p-6 space-y-4">

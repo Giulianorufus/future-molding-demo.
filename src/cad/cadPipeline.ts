@@ -1,13 +1,13 @@
 import { analyzeCADFile } from '@/lib/cadAnalysis';
 import { sanitizeFileName } from '@/utils/sanitizeFileName';
-import { useCadStore } from '@/store/cadStore';
+import { useDrawingStore } from '@/stores/drawingStore';
 
 export async function startCadPipeline(file: File) {
-  const store = useCadStore.getState();
+  const drawing = useDrawingStore.getState();
   try {
-    useCadStore.getState().startLoading(file);
+    drawing.setResult({ isLoading: true });
   } catch (e) {
-    // if store not ready, ignore
+    // ignore
   }
 
   const safeName = sanitizeFileName(file.name || 'upload');
@@ -39,17 +39,19 @@ export async function startCadPipeline(file: File) {
       viewerUrl = null;
     }
 
-    useCadStore.getState().setResult({
-      viewerUrl,
+    useDrawingStore.getState().setResult({
+      previewUrl: viewerUrl,
       volumeCm3: (result as any).volume ?? null,
-      areaProjCm2: (result as any).projectedArea_cm2 ?? (result as any).surface_area ?? null,
-      thicknessAvgMm: thicknessAvg ?? null,
+      surfaceCm2: (result as any).projectedArea_cm2 ?? (result as any).surface_area ?? null,
+      boundingBox: (result as any).bbox ?? null,
+      isLoading: false,
+      error: null,
     });
 
     return { success: true, result };
   } catch (err: any) {
     const msg = String(err?.message ?? err ?? 'Unknown analysis error');
-    try { useCadStore.getState().setError(msg); } catch (_) {}
+    try { useDrawingStore.getState().setResult({ error: msg, isLoading: false }); } catch (_) {}
     return { success: false, error: msg };
   }
 }

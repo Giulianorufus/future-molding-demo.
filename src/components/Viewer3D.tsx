@@ -1,16 +1,15 @@
 import React from "react";
 import ThreeViewer from "./ThreeViewer";
-import useDrawingStore from "@/store/drawingStore";
-import { useDefectsStore } from "@/store/defectsStore";
+import { useDrawingStore } from "@/stores/drawingStore";
 
 const Viewer3D: React.FC = () => {
   const glbUrl = useDrawingStore((s) => s.glbUrl);
   const isLoading = useDrawingStore((s) => s.isLoading);
   const error = useDrawingStore((s) => s.error);
 
-  const pins = useDefectsStore((s) => s.pins);
-  const selectedPin = useDefectsStore((s) => s.selectedPin);
-  const setSelectedPin = useDefectsStore((s) => s.setSelectedPin);
+  const pins: any[] = [];
+  const selectedPin = null;
+  const setSelectedPin = (_: any) => {};
 
   if (isLoading) {
     return (

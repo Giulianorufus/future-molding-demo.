@@ -1,11 +1,11 @@
 import React, { useRef } from "react";
-import { useDrawingStore } from "@/store/drawingStore";
+import { useDrawingStore } from "@/stores/drawingStore";
 
 export default function FilePicker() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const setFile = useDrawingStore((s) => s.setFile);
-  const clear = useDrawingStore((s) => s.clear);
-  const file = useDrawingStore((s) => s.file);
+  const setResult = useDrawingStore((s) => s.setResult);
+  const reset = useDrawingStore((s) => s.reset);
+  const previewUrl = useDrawingStore((s) => s.previewUrl);
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -20,17 +20,17 @@ export default function FilePicker() {
         }}
         onChange={(e) => {
           const f = e.target.files?.[0] ?? null;
-          setFile(f); // accetta anche se è "lo stesso" file, perché l'input è stato azzerato
+          if (f) setResult({ previewUrl: URL.createObjectURL(f) });
         }}
       />
 
-      {file ? (
+      {previewUrl ? (
         <>
-          <span className="text-sm text-gray-600">Selezionato: <strong>{file.name}</strong></span>
+          <span className="text-sm text-gray-600">Anteprima disponibile</span>
           <button
             type="button"
             onClick={() => {
-              clear();
+              reset();
               // opzionale: riapri subito il selettore
               // inputRef.current?.click();
             }}

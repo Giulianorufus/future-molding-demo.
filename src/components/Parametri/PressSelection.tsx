@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect } from "react";
 import * as log from '@/lib/log';
-import { usePressStore } from "@/store/pressStore";
+import { usePressStore } from "@/stores/pressStore";
 
 type Props = {
   value?: {
@@ -20,24 +20,23 @@ type Props = {
 };
 
 export default function PressSelection({ value, onChange, disabled, className = "" }: Props) {
-  const brand = value?.pressId;
-  const model = value?.modelId;
+  const selectedId = value?.pressId;
   const useModelScrew = value?.useModelScrew ?? true;
-  const { brands, models, specs } = usePressStore();
-  const modelsList = brand ? models[brand] || [] : [];
+  const catalog = usePressStore((s) => s.catalog);
+  const catalogList = Object.values(catalog || {}) as any[];
   useEffect(() => {
-    if (brand) log.debug(`[PressSelection] brand=${brand} modelsFound=${modelsList.length}`);
-  }, [brand, modelsList.length]);
-  const selectedModel = brand && model ? specs[brand]?.[model] : undefined;
+    log.debug(`[PressSelection] catalog entries=${catalogList.length}`);
+  }, [catalogList.length]);
+  const selectedModel = selectedId ? catalog[selectedId] : undefined;
   const screwShown = useMemo(() => {
-    if (useModelScrew) return selectedModel?.screwDiameter_mm ?? value?.screwDiameter_mm;
-    return value?.screwDiameter_mm ?? selectedModel?.screwDiameter_mm;
+    if (useModelScrew) return selectedModel?.screwDiameters?.[0] ?? value?.screwDiameter_mm;
+    return value?.screwDiameter_mm ?? selectedModel?.screwDiameters?.[0];
   }, [useModelScrew, selectedModel, value?.screwDiameter_mm]);
 
     function set(partial: Partial<NonNullable<Props["value"]>>) {
       onChange({
-        pressId: brand,
-        modelId: model,
+        pressId: selectedId,
+        modelId: undefined,
         screwDiameter_mm: value?.screwDiameter_mm,
         useModelScrew,
         ...partial,
@@ -45,14 +44,14 @@ export default function PressSelection({ value, onChange, disabled, className = 
     }
 
     function handlePressChange(e: React.ChangeEvent<HTMLSelectElement>) {
-      const nextBrand = e.target.value || undefined;
-      onChange({ pressId: nextBrand, modelId: undefined, screwDiameter_mm: undefined, useModelScrew: true });
+      const nextId = e.target.value || undefined;
+      onChange({ pressId: nextId, modelId: undefined, screwDiameter_mm: undefined, useModelScrew: true });
     }
 
     function handleModelChange(e: React.ChangeEvent<HTMLSelectElement>) {
       const nextModel = e.target.value || undefined;
       onChange({
-        pressId: brand,
+        pressId: selectedId,
         modelId: nextModel,
         screwDiameter_mm: useModelScrew ? undefined : value?.screwDiameter_mm,
         useModelScrew,
@@ -64,7 +63,7 @@ export default function PressSelection({ value, onChange, disabled, className = 
       if (checked) {
         set({ useModelScrew: true });
       } else {
-        set({ useModelScrew: false, screwDiameter_mm: screwShown ?? selectedModel?.screwDiameter_mm });
+        set({ useModelScrew: false, screwDiameter_mm: screwShown ?? selectedModel?.screwDiameters?.[0] });
       }
     }
 
@@ -79,35 +78,26 @@ export default function PressSelection({ value, onChange, disabled, className = 
         <label className="block text-sm font-medium text-gray-900 mb-1">Brand</label>
         <select
           className="w-full border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
-          value={brand ?? ""}
+          value={selectedId ?? ""}
           onChange={handlePressChange}
           disabled={disabled}
         >
-          <option value="">Seleziona brand</option>
-          {brands.map((b) => (
-            <option key={b} value={b}>{b}</option>
+          <option value="">Seleziona pressa</option>
+          {catalogList.map((p) => (
+            <option key={p.id} value={p.id}>{p.name} • {p.tonnellaggio} t</option>
           ))}
         </select>
 
         <div className="mt-4">
           <label className="block text-sm font-medium text-gray-900 mb-1">Modello</label>
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
-            value={model ?? ""}
-            onChange={handleModelChange}
-            disabled={!brand || disabled}
-          >
-            <option value="">{brand ? `Seleziona modello (${modelsList.length} disponibili)` : "Seleziona prima il brand"}</option>
-            {modelsList.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+          {/* Model selection removed: catalog is flat (id -> spec). */}
+          <div className="text-sm text-muted-foreground">Seleziona la pressa dal catalogo</div>
         </div>
 
         <div className="mt-4">
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-xs text-gray-700">
-              <input type="checkbox" className="h-4 w-4" checked={useModelScrew} onChange={handleToggleUseModel} disabled={!model || disabled} />
+              <input type="checkbox" className="h-4 w-4" checked={useModelScrew} onChange={handleToggleUseModel} disabled={!selectedModel || disabled} />
               Usa valore modello
             </label>
           </div>
@@ -120,14 +110,14 @@ export default function PressSelection({ value, onChange, disabled, className = 
               className="w-full border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-primary disabled:opacity-60"
               value={screwShown ?? ""}
               onChange={handleScrewChange}
-              disabled={disabled || useModelScrew || !model}
-              placeholder={model ? "Inserisci diametro in mm" : "Seleziona prima il modello"}
+              disabled={disabled || useModelScrew || !selectedModel}
+              placeholder={selectedModel ? "Inserisci diametro in mm" : "Seleziona prima la pressa"}
             />
             <select
               className="border rounded-md px-2 py-2 text-xs bg-white disabled:opacity-60"
               value={screwShown ?? ""}
               onChange={e => handleScrewChange({ target: { value: e.target.value } } as any)}
-              disabled={disabled || useModelScrew || !model}
+              disabled={disabled || useModelScrew || !selectedModel}
               style={{ minWidth: 70 }}
             >
               <option value="">Standard</option>
@@ -138,10 +128,10 @@ export default function PressSelection({ value, onChange, disabled, className = 
           </div>
         </div>
 
-        {model && (
+        {selectedModel && (
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-700">
-            {selectedModel?.clampForce_kN != null && (
-              <span className="bg-gray-100 px-2 py-1 rounded">Forza chiusura: {selectedModel.clampForce_kN} kN</span>
+            {selectedModel?.tonnellaggio != null && (
+              <span className="bg-gray-100 px-2 py-1 rounded">Tonnellaggio: {selectedModel.tonnellaggio} t</span>
             )}
             {screwShown != null && (
               <span className="bg-gray-100 px-2 py-1 rounded">Vite effettiva: {screwShown} mm {useModelScrew ? "(modello)" : "(manuale)"}</span>

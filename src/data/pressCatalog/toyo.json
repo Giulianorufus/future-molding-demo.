@@ -1,0 +1,9 @@
+{
+  "id": "toyo-450",
+  "name": "Toyo 450",
+  "tonnellaggio": 450,
+  "screwDiameters": [30, 35],
+  "shotVolumeCm3": 480,
+  "maxPressureBar": 280,
+  "maxSpeedMmPerS": 220
+}

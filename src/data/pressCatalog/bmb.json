@@ -1,0 +1,9 @@
+{
+  "id": "bmb-150",
+  "name": "BMB 150",
+  "tonnellaggio": 150,
+  "screwDiameters": [16, 18],
+  "shotVolumeCm3": 140,
+  "maxPressureBar": 200,
+  "maxSpeedMmPerS": 150
+}

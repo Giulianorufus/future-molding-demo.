@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { deriveKey, encryptJson, decryptJson } from "@/lib/crypto";
-import { useSecurityStore } from "@/store/securityStore";
 
 const STORAGE_PREFIX = "fm:";
 
@@ -9,7 +8,9 @@ function storageKey(key: string) {
 }
 
 export function useSecureStorage() {
-  const { password, keyReady } = useSecurityStore();
+  // securityStore removed in new architecture: default to no-password behavior
+  const password: string | null = null;
+  const keyReady = false;
 
   const setItem = useCallback(
     async (key: string, data: unknown) => {

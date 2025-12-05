@@ -1,0 +1,9 @@
+{
+  "id": "engel-200",
+  "name": "Engel 200",
+  "tonnellaggio": 200,
+  "screwDiameters": [20, 24],
+  "shotVolumeCm3": 220,
+  "maxPressureBar": 300,
+  "maxSpeedMmPerS": 180
+}

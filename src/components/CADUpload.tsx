@@ -7,7 +7,7 @@ import { analyzeCADFile, generatePreviewThumbnail, AnalysisResult } from '@/lib/
 import { mapError } from '@/lib/errors';
 import ErrorModal from '@/components/ErrorModal';
 import { storeAnalysisResult } from '@/services/storage';
-import { useDrawingStore } from '@/store/drawingStore';
+import { useDrawingStore } from '@/stores/drawingStore';
 import * as THREE from 'three';
 import { toast } from '@/hooks/use-toast';
 import * as log from '@/lib/log';
@@ -96,13 +96,12 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
             const saved = await storeAnalysisResult(file, analysis, thumbnail);
             if (saved && (saved as any).id) {
               toast({ title: 'Salvato localmente', description: `Disegno salvato con id ${(saved as any).id}` });
-              try {
-                // set drawing store so viewers can load the uploaded file immediately
-                const setFile = useDrawingStore.getState().setFile;
-                if (typeof setFile === 'function') await setFile(file);
-              } catch (e) {
-                log.warn('Setting drawing store failed', e);
-              }
+                try {
+                  // set drawing store preview so viewers can load the uploaded file immediately
+                  useDrawingStore.getState().setResult({ previewUrl: thumbnail });
+                } catch (e) {
+                  log.warn('Setting drawing store failed', e);
+                }
             }
           } catch (e) {
             log.warn('Saving analysis result failed', e);
@@ -127,20 +126,19 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
         }
         const thumb = canvas.toDataURL('image/png');
         setPreviewUrl(thumb);
-        try {
-          const saved = await storeAnalysisResult(file, analysis, thumb);
-          if (saved && (saved as any).id) {
-            toast({ title: 'Salvato localmente', description: `Disegno salvato con id ${(saved as any).id}` });
             try {
-              const setFile = useDrawingStore.getState().setFile;
-              if (typeof setFile === 'function') await setFile(file);
+              const saved = await storeAnalysisResult(file, analysis, thumb);
+              if (saved && (saved as any).id) {
+                toast({ title: 'Salvato localmente', description: `Disegno salvato con id ${(saved as any).id}` });
+                try {
+                  useDrawingStore.getState().setResult({ previewUrl: thumb });
+                } catch (e) {
+                  log.warn('Setting drawing store failed', e);
+                }
+              }
             } catch (e) {
-              log.warn('Setting drawing store failed', e);
+              log.warn('Saving analysis result failed', e);
             }
-          }
-        } catch (e) {
-          log.warn('Saving analysis result failed', e);
-        }
       }
       
       setAnalysisResult(analysis);

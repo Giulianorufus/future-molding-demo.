@@ -3,7 +3,7 @@ import { getDrawingURL, revokeURL } from "@/services/db";
 import { getDrawingAnalysis } from '@/services/storage';
 import StepViewer from '@/components/StepViewer';
 import ThreeViewer from '@/components/ThreeViewer';
-import { useParametriStore } from '@/store/parametriStore';
+import { useDrawingStore } from '@/stores/drawingStore';
 
 type Props = { drawingId: string };
 
@@ -11,7 +11,7 @@ export default function DrawingPreview({ drawingId }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [type, setType] = useState<string>("");
 
-  const modelViewerUrl = useParametriStore((s) => s.viewerUrl);
+  const modelViewerUrl = useDrawingStore((s) => s.previewUrl ?? s.glbUrl);
 
   useEffect(() => {
     let alive = true;

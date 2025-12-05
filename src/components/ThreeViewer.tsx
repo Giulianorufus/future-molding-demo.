@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import type { DefectPin } from "@/store/defectsStore";
+type DefectPin = { id: string; x?: number; y?: number; defect?: string; severity?: number }
 
 export type ThreeViewerProps = {
   glbUrl?: string | null;

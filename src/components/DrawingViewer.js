@@ -1,14 +1,13 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import { warn as logWarn, error as logError } from '@/lib/log';
-import { useDrawingStore } from "@/store/drawingStore";
-import { useAnalysisStore } from "@/store/analysisStore";
+import { useDrawingStore } from "@/stores/drawingStore";
+// analysisStore removed in new architecture; use no-op local analysis setter
 import { computeVolume_cm3, computeArea_cm2, computeBBox_mm, estimateThickness_mm, countConnectedComponents } from "@/utils/geoAnalysis";
 export default function DrawingViewer() {
     const containerRef = useRef(null);
-    const file = useDrawingStore((s) => s.file);
-    const url = useDrawingStore((s) => s.objectUrl);
-    const setAnalysis = useAnalysisStore((s) => s.set);
+    const url = useDrawingStore((s) => s.previewUrl || s.glbUrl);
+    const setAnalysis = (_v) => { /* no-op: analysis handled in core */ };
     const [ext, setExt] = useState("");
     useEffect(() => {
         if (!file) {

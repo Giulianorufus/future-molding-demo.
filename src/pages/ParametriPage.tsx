@@ -1,84 +1,48 @@
 import React, { useEffect } from "react";
-import { useCadStore } from "@/store/cadStore";
-import { useParametriStore } from "@/store/parametriStore";
-import { usePressStore } from "@/store/pressStore";
-
-import { useDefectsStore } from "@/store/defectsStore"; // se esiste, altrimenti puoi rimuoverlo
+import { useDrawingStore } from "@/stores/drawingStore";
+import { useParametriStore } from "@/stores/parametriStore";
+import { usePressStore } from "@/stores/pressStore";
+import { useMaterialStore } from "@/stores/materialStore";
 import Inputs from "@/pages/Parametri/Inputs";
 import CalculatedParameters from "@/pages/Parametri/CalculatedParameters";
 import GeometryInfo from "@/pages/Parametri/GeometryInfo";
 
 const ParametriPage: React.FC = () => {
-  // CAD: analisi + viewer
-  const cadAnalysis = useCadStore((s) => (s as any).result ?? (s as any).analysis ?? null);
-  const cadStatus = useCadStore((s) => (s as any).status ?? (s as any).state ?? "idle");
-  const cadError = useCadStore((s) => (s as any).error ?? null);
-  const cadViewerUrl = useCadStore((s) => (s as any).viewerUrl ?? null);
+  // CAD: analisi + viewer (now drawingStore)
+  const volumeCm3 = useDrawingStore((s) => s.volumeCm3);
+  const drawingIsLoading = useDrawingStore((s) => s.isLoading);
+  const drawingError = useDrawingStore((s) => s.error);
+  const drawingPreviewUrl = useDrawingStore((s) => s.previewUrl ?? s.glbUrl);
 
-  // Pressa selezionata (pressStore deve già esistere)
-  const selectedPress = usePressStore((s) => (s as any).selectedPress ?? (s as any).currentPress ?? null);
-  const selectedScrewDiameter = usePressStore((s) => (s as any).selectedScrewDiameter_mm ?? (s as any).screwDiameter_mm ?? null);
+  // Pressa selezionata (pressStore)
+  const selectedPressId = usePressStore((s) => s.selectedPressId);
+  const pressSpec = usePressStore((s) => (s.catalog && selectedPressId ? s.catalog[selectedPressId] : null));
+  const selectedScrewDiameter = pressSpec?.screwDiameters?.[0] ?? null;
 
   // Parametri store
-  const geometry = useParametriStore((s) => s.geometry);
-  const setGeometry = useParametriStore((s) => s.setGeometry);
-  const setViewerUrl = useParametriStore((s) => s.setViewerUrl);
-  const setPress = useParametriStore((s) => s.setPress);
-  const materialId = useParametriStore((s) => s.materialId);
-  const setMaterial = useParametriStore((s) => s.setMaterial);
-  // Keep calculate access but avoid placing it in effect deps
-  const calculate = useParametriStore((s) => s.calculate);
-  const calculated = useParametriStore((s) => s.calculated);
-  const loading = useParametriStore((s) => s.loading);
-  const error = useParametriStore((s) => s.error);
+  const ricalcola = useParametriStore((s) => s.ricalcola);
+  const result = useParametriStore((s) => s.result);
+  const isCalculating = useParametriStore((s) => s.isCalculating);
+  const calcError = useParametriStore((s) => s.error);
+  const materialId = useMaterialStore((s) => s.selectedMaterialId);
+  const materialSpec = useMaterialStore((s) => (s.catalog && materialId ? s.catalog[materialId] : null));
 
   // Primitive selectors to avoid object identity changes triggering effects
-  const geometryVolume = useParametriStore((s) => (s.geometry as any)?.volumeCm3 ?? (s.geometry as any)?.volumePezzo_cm3 ?? null);
-  const geometryReadyFlag = !!geometryVolume && geometryVolume > 0;
-  const pressId = usePressStore((s) => (s as any).selectedPress?.id ?? (s as any).currentPress?.id ?? null);
-  const screwDiameter = usePressStore((s) => (s as any).selectedScrewDiameter_mm ?? (s as any).screwDiameter_mm ?? null);
+  const geometryReadyFlag = !!volumeCm3 && volumeCm3 > 0;
+  const pressId = selectedPressId;
+  const screwDiameter = selectedScrewDiameter;
 
   // Se Inputs già gestisce la scelta materiale → Inputs deve chiamare setMaterial().
   // Se la scelta materiale è in un altro store, qui devi fare il bridge.
 
   // 1) Bridge CAD → parametriStore (geometria + viewerUrl)
+  // Bridge CAD -> parametriStore: when drawing changes, trigger recalc via parametriStore
   useEffect(() => {
-    if (!cadAnalysis) return;
-
-    console.log("[ParametriPage] CAD analysis ricevuta:", cadAnalysis);
-
-    const volumeCm3 = (cadAnalysis as any).volumeCm3 ?? (cadAnalysis as any).volume ?? null;
-
-    const thicknessAvgMm =
-      (cadAnalysis as any).thicknessAvgMm ?? (cadAnalysis as any).avgThickness ?? null;
-
-    const bbox = (cadAnalysis as any).bbox ?? (cadAnalysis as any).boundingBox ?? null;
-
-    setGeometry({
-      volumeCm3,
-      thicknessAvgMm,
-      bbox,
-    });
-
-    if (cadViewerUrl) {
-      setViewerUrl(cadViewerUrl);
-    }
-  }, [cadAnalysis, cadViewerUrl]);
+    // intentionally minimal: only primitive deps
+  }, [volumeCm3]);
 
   // 2) Bridge Pressa → parametriStore
-  useEffect(() => {
-    if (!selectedPress || !(selectedPress as any).id) return;
-
-    setPress({
-      pressaId: (selectedPress as any).id,
-      screwDiameter_mm: selectedScrewDiameter ?? null,
-    });
-
-    console.log("[ParametriPage] Pressa selezionata:", {
-      id: (selectedPress as any).id,
-      screwDiameter_mm: selectedScrewDiameter,
-    });
-  }, [selectedPress?.id, selectedScrewDiameter]);
+  // Press selection bridge is implicit via pressStore; parametriStore will read pressSpec in auto-calc
 
   // 3) QUI DEVI ASSICURARTI CHE materialId VENGA POPOLATO
   //    SE Inputs.tsx già chiama useParametriStore().setMaterial(id), non serve fare altro.
@@ -90,32 +54,28 @@ const ParametriPage: React.FC = () => {
   // placing the `calculate` function itself in deps — Zustand guarantees its
   // stability.
   useEffect(() => {
-    const ready =
-      geometryReadyFlag &&
-      !!pressId &&
-      !!screwDiameter &&
-      !!materialId;
-
+    const ready = geometryReadyFlag && !!pressId && !!screwDiameter && !!materialId;
     if (!ready) return;
 
-    if (calculated !== null) return; // evita ricalcoli infiniti
+    const input = {
+      volumeCm3: volumeCm3 as number,
+      shotVolumeCm3: pressSpec?.shotVolumeCm3,
+      press: pressSpec ?? null,
+      material: materialSpec ?? null,
+    };
 
-    console.log("[ParametriPage] AUTO-CALC RUN");
-    try {
-      calculate();
-    } catch (e) {
-      console.warn('[ParametriPage] calculate() failed', e);
-    }
+    // trigger recalc
+    ricalcola(input as any).catch((e) => console.warn('[ParametriPage] ricalcola failed', e));
   }, [geometryReadyFlag, pressId, screwDiameter, materialId]);
 
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* Stato CAD */}
-      {cadStatus === "loading" && (
+      {drawingIsLoading && (
         <div className="text-sm text-blue-500">Analisi disegno in corso...</div>
       )}
-      {cadError && (
-        <div className="text-sm text-red-500">Errore analisi disegno: {cadError}</div>
+      {drawingError && (
+        <div className="text-sm text-red-500">Errore analisi disegno: {String(drawingError)}</div>
       )}
 
       {/* Info geometria */}
@@ -125,11 +85,11 @@ const ParametriPage: React.FC = () => {
       <Inputs />
 
       {/* Stato calcolo */}
-      {loading && (
+      {isCalculating && (
         <div className="text-sm text-blue-500">Calcolo parametri in corso...</div>
       )}
-      {error && (
-        <div className="text-sm text-red-500">Errore calcolo parametri: {error}</div>
+      {calcError && (
+        <div className="text-sm text-red-500">Errore calcolo parametri: {String(calcError)}</div>
       )}
 
       {/* Risultati parametri */}
@@ -139,13 +99,13 @@ const ParametriPage: React.FC = () => {
       <pre className="mt-4 text-xs text-gray-500 bg-black/5 p-2 rounded">
         DEBUG:
         {"\n"}
-        geometry: {JSON.stringify(geometry, null, 2)}
+        geometry (drawingStore): {JSON.stringify({ volumeCm3 }, null, 2)}
         {"\n"}
-        press: {JSON.stringify(selectedPress, null, 2)}
+        press: {JSON.stringify(pressSpec, null, 2)}
         {"\n"}
         materialId: {JSON.stringify(materialId, null, 2)}
         {"\n"}
-        calculated: {JSON.stringify(calculated, null, 2)}
+        calculated: {JSON.stringify(result, null, 2)}
       </pre>
     </div>
   );

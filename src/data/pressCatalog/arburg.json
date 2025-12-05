@@ -1,0 +1,9 @@
+{
+  "id": "arburg-370-u",
+  "name": "Arburg 370 U",
+  "tonnellaggio": 370,
+  "screwDiameters": [18, 22, 25],
+  "shotVolumeCm3": 350,
+  "maxPressureBar": 250,
+  "maxSpeedMmPerS": 200
+}

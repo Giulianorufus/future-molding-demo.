@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from "react";
-import { useParametriStore } from "../store/parametriStore";
-import { useDrawingStore } from "../store/drawingStore";
+import { useParametriStore } from "../stores/parametriStore";
+import { useDrawingStore } from "../stores/drawingStore";
 
 // DEPRECATED — replaced by ThreeViewer.tsx
 export default function DeprecatedViewer() {
-  const viewerUrl = useParametriStore((s) => s.viewerUrl);
-  const file = useDrawingStore((s) => s.file);
+  const viewerUrl = useDrawingStore((s) => s.previewUrl ?? s.glbUrl);
+  const file = null; // file object removed from new drawingStore
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import type { ICalculationResult } from '../store/appStore';
+// Legacy appStore types removed; keep this service self-contained
 import { findMaterialById, type IMaterial, type Brand, findPressModel } from '../fm-core';
 import { getPressSpecs } from '../lib/pressData';
 
@@ -7,7 +7,7 @@ export function calculateInjection(
   marca: Brand | string, 
   modello: string, 
   material: IMaterial | null
-): ICalculationResult {
+): any {
   const { spessore, volumeCavita, volumeMaterozza, cushion } = params;
   
   // Validazione base: in modalità di emergenza non blocchiamo il calcolo se mancano dati
@@ -102,7 +102,7 @@ export function calculateInjection(
   const requiredTonnage = Math.ceil((estimatedProjectedArea_cm2 * 0.1) / 1); // crude map cm2 -> kN -> ton
   const pressAdequate = clamp_t ? (clamp_t >= requiredTonnage) : true;
 
-  const result: ICalculationResult = {
+  const result: any = {
     success: true,
     weight: Math.round(weight * 100) / 100,
     cycleTime: Math.round(cycleTime * 100) / 100,

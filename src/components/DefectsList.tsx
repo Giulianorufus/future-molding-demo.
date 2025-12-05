@@ -5,7 +5,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Edit3, ChevronDown, ChevronRight } from "lucide-react";
-import { DefectPin } from "@/store/defectsStore";
+// Local DefectPin type (defects are handled by core/defectRules and parametriStore)
+type DefectPin = {
+  id: string
+  defect: string
+  severity: number
+  notes?: string
+  x?: number
+  y?: number
+  rotation_deg?: number
+}
 
 const DEFECT_TYPES = [
   "Linee di flusso",

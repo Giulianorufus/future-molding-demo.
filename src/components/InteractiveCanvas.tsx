@@ -6,7 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RotateCcw, Move, ZoomIn, Download, FlipHorizontal } from "lucide-react";
 import { DefectsList } from "./DefectsList";
-import { useDefectsStore, type DefectPin } from "@/store/defectsStore";
+import { useParametriStore } from '@/stores/parametriStore';
+import { useDrawingStore } from '@/stores/drawingStore';
+
+type DefectPin = {
+  id: string
+  face?: string
+  x?: number
+  y?: number
+  rotation_deg?: number
+  defect: string
+  severity: number
+  notes?: string
+}
 
 interface InteractiveCanvasProps {
   frontImage?: string;
@@ -18,13 +30,22 @@ export const InteractiveCanvas = ({ frontImage, backImage }: InteractiveCanvasPr
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [currentFace, setCurrentFace] = useState<"front" | "back">("front");
   const [currentRotation, setCurrentRotation] = useState<0 | 90 | 180 | 270>(0);
-  // Use centralized defects store instead of local state
-  const pins = useDefectsStore((s) => s.pins);
-  const selectedPin = useDefectsStore((s) => s.selectedPin);
-  const addPinToStore = useDefectsStore((s) => s.addPin);
-  const updatePinInStore = useDefectsStore((s) => s.updatePin);
-  const removePinFromStore = useDefectsStore((s) => s.removePin);
-  const setSelectedPin = useDefectsStore((s) => s.setSelectedPin);
+  // Local defects state (centralized store removed in refactor)
+  const [pins, setPins] = useState<DefectPin[]>([]);
+  const [selectedPin, setSelectedPin] = useState<string | null>(null);
+  const addPinToStore = (p: any) => {
+    const id = `pin-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+    const np: DefectPin = { id, ...p } as any;
+    setPins((s) => [...s, np]);
+    // trigger a conservative recalculation in parametriStore using drawingStore volume
+    try {
+      const vol = useDrawingStore.getState().volumeCm3 ?? null;
+      if (vol) useParametriStore.getState().ricalcola({ volumeCm3: vol } as any);
+    } catch (_) {}
+    return id;
+  };
+  const updatePinInStore = (id: string, updates: Partial<DefectPin>) => setPins((s) => s.map(p => p.id === id ? { ...p, ...updates } : p));
+  const removePinFromStore = (id: string) => setPins((s) => s.filter(p => p.id !== id));
 
   // Immagini placeholder
   const defaultFrontImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f3f4f6'/%3E%3Ctext x='200' y='150' text-anchor='middle' fill='%23666' font-size='16'%3EFRONTE%3C/text%3E%3C/svg%3E";

@@ -1,8 +1,9 @@
 // src/store/analysisStore.ts
-// Alias per mantenere compatibilità, ma usiamo UN SOLO store globale.
+// Compatibility shim: re-export the canonical `parametriStore` from `src/stores`.
+// This file exists only to avoid breaking legacy imports of `@/store/analysisStore`.
+// No logic or state should live here — the single source of truth is in `src/stores`.
 
-import { useParametriStore } from "./parametriStore";
+import { useParametriStore as useParametriStoreCanonical } from "@/stores/parametriStore";
 
-// AnalysisStore is now an alias to parametriStore for compatibility
-export const useAnalysisStore = useParametriStore;
-export type AnalysisStore = ReturnType<typeof useParametriStore>;
+export const useAnalysisStore = useParametriStoreCanonical;
+export type AnalysisStore = ReturnType<typeof useParametriStoreCanonical>;

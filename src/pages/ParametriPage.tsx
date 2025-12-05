@@ -19,8 +19,7 @@ const ParametriPage: React.FC = () => {
   const pressSpec = usePressStore((s) => (s.catalog && selectedPressId ? s.catalog[selectedPressId] : null));
   const selectedScrewDiameter = pressSpec?.screwDiameters?.[0] ?? null;
 
-  // Parametri store
-  const ricalcola = useParametriStore((s) => s.ricalcola);
+  // Parametri store (orchestration handled inside parametriStore via subscriptions)
   const result = useParametriStore((s) => s.result);
   const isCalculating = useParametriStore((s) => s.isCalculating);
   const calcError = useParametriStore((s) => s.error);
@@ -48,25 +47,8 @@ const ParametriPage: React.FC = () => {
   //    SE Inputs.tsx già chiama useParametriStore().setMaterial(id), non serve fare altro.
   //    Se invece materiale viene salvato in un altro store, devi fare il bridge come fatto per la pressa.
 
-  // 4) Auto-calcolo quando ho: geometria + pressa + materiale
-  // Use only primitives in deps to avoid infinite re-render loops caused by
-  // object identity changes (geometry, selectedPress, etc.). Also avoid
-  // placing the `calculate` function itself in deps — Zustand guarantees its
-  // stability.
-  useEffect(() => {
-    const ready = geometryReadyFlag && !!pressId && !!screwDiameter && !!materialId;
-    if (!ready) return;
-
-    const input = {
-      volumeCm3: volumeCm3 as number,
-      shotVolumeCm3: pressSpec?.shotVolumeCm3,
-      press: pressSpec ?? null,
-      material: materialSpec ?? null,
-    };
-
-    // trigger recalc
-    ricalcola(input as any).catch((e) => console.warn('[ParametriPage] ricalcola failed', e));
-  }, [geometryReadyFlag, pressId, screwDiameter, materialId]);
+  // Auto-calcolo: handled by `parametriStore` subscriptions. Keep UI free of
+  // direct calculation triggers.
 
   return (
     <div className="flex flex-col gap-4 p-4">

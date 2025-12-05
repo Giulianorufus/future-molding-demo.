@@ -37,11 +37,7 @@ export const InteractiveCanvas = ({ frontImage, backImage }: InteractiveCanvasPr
     const id = `pin-${Date.now()}-${Math.round(Math.random() * 1000)}`;
     const np: DefectPin = { id, ...p } as any;
     setPins((s) => [...s, np]);
-    // trigger a conservative recalculation in parametriStore using drawingStore volume
-    try {
-      const vol = useDrawingStore.getState().volumeCm3 ?? null;
-      if (vol) useParametriStore.getState().ricalcola({ volumeCm3: vol } as any);
-    } catch (_) {}
+    // Orchestration lives in parametriStore; do not trigger calculations from UI.
     return id;
   };
   const updatePinInStore = (id: string, updates: Partial<DefectPin>) => setPins((s) => s.map(p => p.id === id ? { ...p, ...updates } : p));

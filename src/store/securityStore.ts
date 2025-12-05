@@ -1,4 +1,5 @@
-import { create } from "zustand";
+// Lightweight security store without Zustand to comply with architecture rules
+import { useSyncExternalStore } from "react";
 
 interface SecurityState {
   keyReady: boolean;
@@ -6,8 +7,36 @@ interface SecurityState {
   setPassword: (pwd: string) => void;
 }
 
-export const useSecurityStore = create<SecurityState>((set) => ({
-  keyReady: false,
-  password: null,
-  setPassword: (pwd) => set({ password: pwd, keyReady: true }),
-}));
+let keyReady = false;
+let password: string | null = null;
+const subs = new Set<() => void>();
+
+function notify() {
+  for (const s of Array.from(subs)) s();
+}
+
+export function setPassword(pwd: string) {
+  password = pwd;
+  keyReady = true;
+  notify();
+}
+
+function getSnapshot(): SecurityState {
+  return { keyReady, password, setPassword };
+}
+
+function subscribe(cb: () => void) {
+  subs.add(cb);
+  return () => subs.delete(cb);
+}
+
+export function useSecurityStore(): SecurityState {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+// compatibility: provide getState() similar to Zustand for legacy synchronous access
+(useSecurityStore as any).getState = () => getSnapshot();
+export function getSecurityState(): SecurityState {
+  return getSnapshot();
+}
+
+export default useSecurityStore;

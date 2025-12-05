@@ -1,6 +1,10 @@
-import { create } from "zustand";
+// Defects store implemented without Zustand to comply with architecture rules
+// (only the canonical stores in `src/stores` may use Zustand).
+// This module exposes a React hook `useDefectsStore` that mirrors the
+// previous API while using `useSyncExternalStore` internally.
 
-// Defect pin shape used by InteractiveCanvas and DefectsList
+import { useSyncExternalStore } from "react";
+
 export type DefectPin = {
   id: string;
   face: "front" | "back";
@@ -22,31 +26,64 @@ type DefectsState = {
   setSelectedPin: (id: string | null) => void;
 };
 
+let pins: DefectPin[] = [];
+let selectedPin: string | null = null;
+const subs = new Set<() => void>();
+
 const genId = () => Math.random().toString(36).slice(2, 10);
 
-export const useDefectsStore = create<DefectsState>((set, get) => ({
-  pins: [],
-  selectedPin: null,
+function notify() {
+  for (const s of Array.from(subs)) s();
+}
 
-  addPin: (p) => {
-    const newPin: DefectPin = { ...p, id: genId() } as DefectPin;
-    set((state) => ({ pins: [...state.pins, newPin] }));
-    set(() => ({ selectedPin: newPin.id }));
-  },
+export function addPin(p: Omit<DefectPin, "id">) {
+  const newPin: DefectPin = { ...p, id: genId() } as DefectPin;
+  pins = [...pins, newPin];
+  selectedPin = newPin.id;
+  notify();
+}
 
-  removePin: (id) => {
-    set((state) => ({ pins: state.pins.filter((x) => x.id !== id) }));
-    const sel = get().selectedPin;
-    if (sel === id) set({ selectedPin: null });
-  },
+export function removePin(id: string) {
+  pins = pins.filter((x) => x.id !== id);
+  if (selectedPin === id) selectedPin = null;
+  notify();
+}
 
-  updatePin: (id, updates) => {
-    set((state) => ({
-      pins: state.pins.map((x) => (x.id === id ? { ...x, ...updates } : x)),
-    }));
-  },
+export function updatePin(id: string, updates: Partial<DefectPin>) {
+  pins = pins.map((x) => (x.id === id ? { ...x, ...updates } : x));
+  notify();
+}
 
-  clearAll: () => set({ pins: [], selectedPin: null }),
+export function clearAll() {
+  pins = [];
+  selectedPin = null;
+  notify();
+}
 
-  setSelectedPin: (id) => set({ selectedPin: id }),
-}));
+export function setSelectedPin(id: string | null) {
+  selectedPin = id;
+  notify();
+}
+
+function getSnapshot(): DefectsState {
+  return {
+    pins,
+    selectedPin,
+    addPin,
+    removePin,
+    updatePin,
+    clearAll,
+    setSelectedPin,
+  };
+}
+
+function subscribe(cb: () => void) {
+  subs.add(cb);
+  return () => subs.delete(cb);
+}
+
+export function useDefectsStore(): DefectsState {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export default useDefectsStore;

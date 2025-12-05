@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { addDrawing, type DrawingMeta } from '@/services/storage';
 import { saveDrawingFile, getDrawingURL } from '@/services/db';
-import { useParametriStore } from '@/stores/parametriStore';
 import { useDrawingStore } from '@/stores/drawingStore';
 import { startCadPipeline } from '@/cad/cadPipeline';
 import { analyzeServerFile } from '@/services/analysisService';
@@ -12,7 +11,8 @@ import { useToast } from '@/components/ui/use-toast';
 export function useDrawingUpload() {
     const { toast } = useToast();
     const [isUploading, setIsUploading] = useState(false);
-    const paramStore = useParametriStore();
+    // NOTE: parametriStore should react to drawing/press/material changes via subscription.
+    // Avoid calling paramStore.ricalcola() from UI/hooks — orchestration lives in `parametriStore`.
 
     // applyAnalysisToModelStore removed: we mirror analysis into parametriStore instead
 
@@ -58,10 +58,7 @@ export function useDrawingUpload() {
                             boundingBox: res?.bbox ?? null,
                         });
 
-                        // Trigger a parametri recalc with minimal input
-                        if (vol && typeof vol === 'number') {
-                            await useParametriStore.getState().ricalcola({ volumeCm3: vol } as any);
-                        }
+                        // Orchestration will react to drawingStore changes; do not call ricalcola() here.
                     } catch (_) {}
                 } else {
                     // Pipeline failed or simple file: try server analysis or simple analysis
@@ -76,7 +73,7 @@ export function useDrawingUpload() {
                                 previewUrl: null,
                                 boundingBox: null,
                             });
-                            if (vol) await useParametriStore.getState().ricalcola({ volumeCm3: vol } as any);
+                            // Orchestration will react to drawingStore changes; do not call ricalcola() here.
                         }
                     } catch (err) {
                         console.warn("Server analysis failed, trying local fallback", err);
@@ -91,7 +88,7 @@ export function useDrawingUpload() {
                                 previewUrl: null,
                                 boundingBox: null,
                             });
-                            if (vol) await useParametriStore.getState().ricalcola({ volumeCm3: vol } as any);
+                            // Orchestration will react to drawingStore changes; do not call ricalcola() here.
                         }
                     }
                 }

@@ -4,7 +4,11 @@ import { useDrawingUpload } from '@/hooks/useDrawingUpload'
 
 export default function Step1Drawing({ onNext }: { onNext?: () => void }) {
   const { handleUpload, isUploading } = useDrawingUpload()
-  const { volumeCm3, surfaceCm2, boundingBox, previewUrl, isLoading } = useDrawingStore((s) => ({ volumeCm3: s.volumeCm3, surfaceCm2: s.surfaceCm2, boundingBox: s.boundingBox, previewUrl: s.previewUrl, isLoading: s.isLoading }))
+  const volumeCm3 = useDrawingStore((s) => s.volumeCm3)
+  const surfaceCm2 = useDrawingStore((s) => s.surfaceCm2)
+  const boundingBox = useDrawingStore((s) => s.boundingBox)
+  const previewUrl = useDrawingStore((s) => s.previewUrl)
+  const isLoading = useDrawingStore((s) => s.isLoading)
 
   const canNext = typeof volumeCm3 === 'number' && volumeCm3 > 0
 

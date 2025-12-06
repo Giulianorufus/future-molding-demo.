@@ -2,7 +2,9 @@ import React from 'react'
 import { useParametriStore } from '@/stores/parametriStore'
 
 export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
-  const { calculated, result, loading } = useParametriStore((s) => ({ calculated: s.calculated, result: s.result, loading: s.loading }))
+  const calculated = useParametriStore((s) => s.calculated)
+  const result = useParametriStore((s) => s.result)
+  const loading = useParametriStore((s) => s.loading)
   const data = result ?? calculated
 
   return (

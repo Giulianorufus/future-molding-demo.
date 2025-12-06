@@ -1,8 +1,21 @@
 import React from 'react'
 import { useMaterialStore } from '@/stores/materialStore'
+import materialCatalog from '@/data/materialCatalog'
 
 export default function Step3Material({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
   const { catalog, selectedMaterialId, setCatalog, selectMaterial } = useMaterialStore()
+  // ensure catalog is populated when wizard step mounts
+  React.useEffect(() => {
+    if (!catalog || Object.keys(catalog).length === 0) {
+      // convert array catalog to record by id if needed
+      try {
+        const asRecord = (materialCatalog || []).reduce((acc, m) => ({ ...acc, [m.id]: m }), {})
+        setCatalog(asRecord)
+      } catch (err) {
+        // ignore
+      }
+    }
+  }, [catalog, setCatalog])
   const materials = Object.values(catalog || {})
 
   const canNext = !!selectedMaterialId

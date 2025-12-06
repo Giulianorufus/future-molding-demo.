@@ -3,16 +3,24 @@ import { useDrawingStore } from "@/stores/drawingStore";
 import { useParametriStore as useParamsStore } from "@/stores/parametriStore";
 
 export default function Difetti() {
-  // Drawing store (nuovo flusso)
-  const drawing = useDrawingStore((s) => ({
-    glbUrl: s.glbUrl,
-    previewUrl: s.previewUrl,
-    volumeCm3: s.volumeCm3,
-    surfaceCm2: s.surfaceCm2,
-    boundingBox: s.boundingBox,
-    isLoading: s.isLoading,
-    error: s.error,
-  }));
+  // Drawing store (nuovo flusso) - select primitives and memoize combined object
+  const glbUrl = useDrawingStore((s) => s.glbUrl)
+  const previewUrl = useDrawingStore((s) => s.previewUrl)
+  const volumeCm3 = useDrawingStore((s) => s.volumeCm3)
+  const surfaceCm2 = useDrawingStore((s) => s.surfaceCm2)
+  const boundingBox = useDrawingStore((s) => s.boundingBox)
+  const isLoading = useDrawingStore((s) => s.isLoading)
+  const error = useDrawingStore((s) => s.error)
+
+  const drawing = React.useMemo(() => ({
+    glbUrl,
+    previewUrl,
+    volumeCm3,
+    surfaceCm2,
+    boundingBox,
+    isLoading,
+    error,
+  }), [glbUrl, previewUrl, volumeCm3, surfaceCm2, boundingBox, isLoading, error])
 
   // Parametri store
   const params = useParamsStore((s) => s.result);

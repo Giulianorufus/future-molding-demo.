@@ -3,7 +3,7 @@ import { MaterialInfo } from "./materialData";
 import { recommendedClampForceTon } from "./clampForce";
 import { parseOverride } from "../utils/overrides";
 import { enforceSafety } from "./safetyChecks";
-import { useParametriStore } from "../store/parametriStore";
+import { useDrawingStore } from "../stores/drawingStore";
 import type { GeometrySummary, PackResult, VPResult, TonnageResult, TemperatureSuggestion, CalcSuggestions } from "./calcTypes";
 import type { CalcInput as UserCalcInput, CalcOutput as UserCalcOutput, TemperatureOutput as UserTemperatureOutput } from "./calcTypes";
 import {
@@ -77,13 +77,15 @@ export interface CalcResult {
 
 export function calculateParameters(input: CalcInput): CalcResult {
   const { material, press, screwDiameter } = input;
-  const geometry: GeometrySummary = (() => {
-    try {
-      return useParametriStore.getState().geometry as GeometrySummary;
-    } catch (e) {
-      return {} as GeometrySummary;
-    }
-  })();
+  // Recupero geometria dalla fonte corretta: drawingStore
+  const ds = useDrawingStore.getState();
+
+  const geometry: GeometrySummary = {
+    volumeCm3: (ds as any).volumeCm3 ?? null,
+    areaCm2: (ds as any).areaCm2 ?? null,
+    spessoreMedio: (ds as any).spessoreMedio ?? null,
+    boundingBox: (ds as any).boundingBox ?? null,
+  } as any;
 
   const meltMid = (material.meltMin + material.meltMax) / 2;
   const delta = 8;

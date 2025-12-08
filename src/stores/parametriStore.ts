@@ -4,6 +4,8 @@ import { logInput, logOutput } from '../core/log'
 import { useDrawingStore } from './drawingStore'
 import { usePressStore } from './pressStore'
 import { useMaterialStore } from './materialStore'
+import { useDefectsStore } from './defectsStore'
+import { applyDefectCorrections, type DefectId } from '../calc/defectRules'
 
 export type ParametriState = {
   lastInput: CalculationInput | null
@@ -53,11 +55,12 @@ if (typeof window !== 'undefined') {
       const d = useDrawingStore.getState()
       const p = usePressStore.getState()
       const m = useMaterialStore.getState()
+      const ds = useDefectsStore.getState()
 
       const pressEntry = p?.selectedPressId ? (p.catalog?.[p.selectedPressId] ?? null) : null
       const materialEntry = m?.selectedMaterialId ? (m.catalog?.[m.selectedMaterialId] ?? null) : null
 
-      return {
+      const baseInput: CalculationInput = {
         volumeCm3: d?.volumeCm3 ?? 0,
         shotVolumeCm3: undefined,
         press: pressEntry
@@ -77,6 +80,11 @@ if (typeof window !== 'undefined') {
             }
           : null,
       }
+
+      // Read defect selection and apply corrections (pure function)
+      const defectId = (ds?.selectedDefectId as DefectId) ?? null
+      const finalInput = applyDefectCorrections(baseInput as any, defectId) as CalculationInput
+      return finalInput
     }
 
     function inputsEqual(a: CalculationInput | null, b: CalculationInput | null): boolean {
@@ -106,6 +114,8 @@ if (typeof window !== 'undefined') {
     useDrawingStore.subscribe(() => scheduleRecalc())
     usePressStore.subscribe(() => scheduleRecalc())
     useMaterialStore.subscribe(() => scheduleRecalc())
+    // Recalculate when defect selection changes (guarded by existing prereqs inside scheduleRecalc)
+    useDefectsStore.subscribe(() => scheduleRecalc())
   }
 }
 

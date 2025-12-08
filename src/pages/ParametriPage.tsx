@@ -1,97 +1,106 @@
-import React, { useEffect } from "react";
-import { useDrawingStore } from "@/stores/drawingStore";
-import { useParametriStore } from "@/stores/parametriStore";
-import { usePressStore } from "@/stores/pressStore";
-import { useMaterialStore } from "@/stores/materialStore";
-import Inputs from "@/pages/Parametri/Inputs";
-import CalculatedParameters from "@/pages/Parametri/CalculatedParameters";
-import GeometryInfo from "@/pages/Parametri/GeometryInfo";
+import { useParametriStore } from '../stores/parametriStore'
 
-const ParametriPage: React.FC = () => {
-  // CAD: analisi + viewer (now drawingStore)
-  const volumeCm3 = useDrawingStore((s) => s.volumeCm3);
-  const drawingIsLoading = useDrawingStore((s) => s.isLoading);
-  const drawingError = useDrawingStore((s) => s.error);
-  const drawingPreviewUrl = useDrawingStore((s) => s.previewUrl ?? s.glbUrl);
+export default function ParametriPage() {
+  const result = useParametriStore(s => s.result);
+  const loading = useParametriStore(s => s.loading);
+  const error = useParametriStore(s => s.error);
 
-  // Pressa selezionata (pressStore)
-  const selectedPressId = usePressStore((s) => s.selectedPressId);
-  const pressSpec = usePressStore((s) => (s.catalog && selectedPressId ? s.catalog[selectedPressId] : null));
-  const selectedScrewDiameter = pressSpec?.screwDiameters?.[0] ?? null;
+  if (loading) {
+    return <div className="text-blue-600 font-semibold p-4">Calcolo in corso…</div>;
+  }
 
-  // Parametri store (orchestration handled inside parametriStore via subscriptions)
-  const result = useParametriStore((s) => s.result);
-  const isCalculating = useParametriStore((s) => s.isCalculating);
-  const calcError = useParametriStore((s) => s.error);
-  const materialId = useMaterialStore((s) => s.selectedMaterialId);
-  const materialSpec = useMaterialStore((s) => (s.catalog && materialId ? s.catalog[materialId] : null));
+  if (error) {
+    return <div className="text-red-600 font-semibold p-4">Errore: {error}</div>;
+  }
 
-  // Primitive selectors to avoid object identity changes triggering effects
-  const geometryReadyFlag = !!volumeCm3 && volumeCm3 > 0;
-  const pressId = selectedPressId;
-  const screwDiameter = selectedScrewDiameter;
-
-  // Se Inputs già gestisce la scelta materiale → Inputs deve chiamare setMaterial().
-  // Se la scelta materiale è in un altro store, qui devi fare il bridge.
-
-  // 1) Bridge CAD → parametriStore (geometria + viewerUrl)
-  // Bridge CAD -> parametriStore: when drawing changes, trigger recalc via parametriStore
-  useEffect(() => {
-    // intentionally minimal: only primitive deps
-  }, [volumeCm3]);
-
-  // 2) Bridge Pressa → parametriStore
-  // Press selection bridge is implicit via pressStore; parametriStore will read pressSpec in auto-calc
-
-  // 3) QUI DEVI ASSICURARTI CHE materialId VENGA POPOLATO
-  //    SE Inputs.tsx già chiama useParametriStore().setMaterial(id), non serve fare altro.
-  //    Se invece materiale viene salvato in un altro store, devi fare il bridge come fatto per la pressa.
-
-  // Auto-calcolo: handled by `parametriStore` subscriptions. Keep UI free of
-  // direct calculation triggers.
+  if (!result) {
+    return <div className="text-gray-600 p-4">Nessun calcolo disponibile. Completa il wizard.</div>;
+  }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Stato CAD */}
-      {drawingIsLoading && (
-        <div className="text-sm text-blue-500">Analisi disegno in corso...</div>
-      )}
-      {drawingError && (
-        <div className="text-sm text-red-500">Errore analisi disegno: {String(drawingError)}</div>
-      )}
+    <div className="p-4 space-y-6">
 
-      {/* Info geometria */}
-      <GeometryInfo />
+      {/* GEOMETRIA */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Geometria</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Volume pezzo</div><div className="text-right">{result.volumePezzo} cm³</div>
+          <div>Volume materozza</div><div className="text-right">{result.volumeMaterozza} cm³</div>
+          <div>Volume totale</div><div className="text-right">{result.volumeTotale} cm³</div>
+          <div>Area proiettata</div><div className="text-right">{result.areaProiettata} cm²</div>
+          <div>Spessore medio</div><div className="text-right">{result.spessoreMedio} mm</div>
+        </div>
+      </section>
 
-      {/* Sezione input (pressa, vite, materiale, ecc.) */}
-      <Inputs />
+      {/* INIEZIONE */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Iniezione</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Velocità iniezione</div><div className="text-right">{result.velocitaIniezione} cm³/s</div>
+          <div>Pressione iniezione</div><div className="text-right">{result.pressioneIniezione} bar</div>
+          <div>Fill time</div><div className="text-right">{result.fillTime} s</div>
+        </div>
+      </section>
 
-      {/* Stato calcolo */}
-      {isCalculating && (
-        <div className="text-sm text-blue-500">Calcolo parametri in corso...</div>
-      )}
-      {calcError && (
-        <div className="text-sm text-red-500">Errore calcolo parametri: {String(calcError)}</div>
-      )}
+      {/* COMMUTAZIONE VP */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Commutazione (VP)</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>VP volume</div><div className="text-right">{result.vpVolume} cm³</div>
+          <div>VP pressione</div><div className="text-right">{result.vpPressione} bar</div>
+        </div>
+      </section>
 
-      {/* Risultati parametri */}
-      <CalculatedParameters />
+      {/* PACK */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Post-pressione (Pack)</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Pressione pack</div><div className="text-right">{result.packPressione} bar</div>
+          <div>Tempo pack</div><div className="text-right">{result.packTempo} s</div>
+        </div>
+      </section>
 
-      {/* Debug opzionale (puoi togliere dopo i test) */}
-      <pre className="mt-4 text-xs text-gray-500 bg-black/5 p-2 rounded">
-        DEBUG:
-        {"\n"}
-        geometry (drawingStore): {JSON.stringify({ volumeCm3 }, null, 2)}
-        {"\n"}
-        press: {JSON.stringify(pressSpec, null, 2)}
-        {"\n"}
-        materialId: {JSON.stringify(materialId, null, 2)}
-        {"\n"}
-        calculated: {JSON.stringify(result, null, 2)}
-      </pre>
+      {/* RAFFREDDAMENTO */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Raffreddamento</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Tempo raffreddamento</div><div className="text-right">{result.raffreddamentoTempo} s</div>
+        </div>
+      </section>
+
+      {/* PLASTIFICAZIONE */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Plastificazione</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Velocità vite</div><div className="text-right">{result.viteVelocita} mm/s</div>
+          <div>Contropressione</div><div className="text-right">{result.controPressione} bar</div>
+          <div>Tempo dosatura</div><div className="text-right">{result.dosaturaTempo} s</div>
+        </div>
+      </section>
+
+      {/* TONNELLAGGIO */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Tonnellaggio</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Richiesto</div><div className="text-right">{result.tonnellaggioRichiesto} kN</div>
+          <div>Disponibile</div><div className="text-right">{result.tonnellaggioDisponibile} kN</div>
+        </div>
+      </section>
+
+      {/* TEMPERATURE */}
+      <section>
+        <h2 className="text-xl font-bold text-blue-800 border-b border-blue-300 pb-1">Temperature</h2>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <div>Z1</div><div className="text-right">{result.z1} °C</div>
+          <div>Z2</div><div className="text-right">{result.z2} °C</div>
+          <div>Z3</div><div className="text-right">{result.z3} °C</div>
+          <div>Z4</div><div className="text-right">{result.z4} °C</div>
+          <div>Stampo</div><div className="text-right">{result.stampo} °C</div>
+          <div>Ugello</div><div className="text-right">{result.ugello} °C</div>
+        </div>
+      </section>
+
     </div>
   );
-};
-
-export default ParametriPage;
+}
 

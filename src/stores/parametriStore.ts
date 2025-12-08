@@ -9,6 +9,8 @@ export type ParametriState = {
   lastInput: CalculationInput | null
   result: CalculationResult | null
   isCalculating: boolean
+  // compatibility: a `loading` boolean selector is used by presentational UI
+  loading: boolean
   error: string | null
   ricalcola: (input: CalculationInput) => Promise<void>
   reset: () => void
@@ -18,20 +20,21 @@ export const useParametriStore = create<ParametriState>((set) => ({
   lastInput: null,
   result: null,
   isCalculating: false,
+  loading: false,
   error: null,
   async ricalcola(input) {
-    set({ isCalculating: true, error: null })
+    set({ isCalculating: true, loading: true, error: null })
     try {
       try { logInput?.(input) } catch (_) {}
       const res = calcolaParametri(input as any) as CalculationResult
       try { logOutput?.(res) } catch (_) {}
-      set({ lastInput: input, result: res, isCalculating: false })
+      set({ lastInput: input, result: res, isCalculating: false, loading: false })
     } catch (err: any) {
-      set({ error: String(err?.message ?? err), isCalculating: false })
+      set({ error: String(err?.message ?? err), isCalculating: false, loading: false })
     }
   },
   reset() {
-    set({ lastInput: null, result: null, isCalculating: false, error: null })
+    set({ lastInput: null, result: null, isCalculating: false, loading: false, error: null })
   },
 }))
 

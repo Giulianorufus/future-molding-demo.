@@ -7,10 +7,11 @@ export type ThreeViewerProps = {
   viewerUrl?: string | null;
   pins?: DefectPin[];
   selectedPinId?: string | null;
+  selectedPin?: { x: number; y: number; z: number } | null;
   onSelectPin?: (id: string | null) => void;
 };
 
-export const ThreeViewer: React.FC<ThreeViewerProps> = ({ glbUrl, viewerUrl, pins, selectedPinId, onSelectPin }) => {
+export const ThreeViewer: React.FC<ThreeViewerProps> = ({ glbUrl, viewerUrl, pins, selectedPinId, selectedPin, onSelectPin }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<string>("Idle");
   const effectiveUrl = glbUrl ?? viewerUrl ?? null;
@@ -79,6 +80,21 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ glbUrl, viewerUrl, pin
             root.scale.setScalar(scale);
 
             scene.add(root);
+
+            // If a selectedPin is provided, add a simple marker sphere to the scene
+            if (selectedPin) {
+              try {
+                const marker = new THREE.Mesh(
+                  new THREE.SphereGeometry(2, 16, 16),
+                  new THREE.MeshBasicMaterial({ color: 0xffcc00 })
+                );
+                marker.position.set(selectedPin.x, selectedPin.y, selectedPin.z);
+                scene.add(marker);
+              } catch (e) {
+                // defensive: don't break rendering on marker issues
+                console.error('ThreeViewer: marker error', e);
+              }
+            }
             animate();
             setStatus("Ready");
           },
@@ -104,7 +120,7 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ glbUrl, viewerUrl, pin
       renderer.dispose();
       containerRef.current && (containerRef.current.innerHTML = "");
     };
-  }, [effectiveUrl]);
+  }, [effectiveUrl, selectedPin]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "320px", borderRadius: 8, overflow: "hidden" }}>

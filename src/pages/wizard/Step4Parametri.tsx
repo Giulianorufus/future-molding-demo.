@@ -2,10 +2,9 @@ import React from 'react'
 import { useParametriStore } from '@/stores/parametriStore'
 
 export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
-  const calculated = useParametriStore((s) => s.calculated)
   const result = useParametriStore((s) => s.result)
   const loading = useParametriStore((s) => s.loading)
-  const data = result ?? calculated
+  const data = result
 
   return (
     <div className="flex flex-col gap-4">

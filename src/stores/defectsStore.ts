@@ -1,17 +1,24 @@
 import { create } from 'zustand'
 
-export type DefectId = 'SHORT_SHOT' | 'BAVE' | 'RITIRO' | 'DEFORMAZIONE' | string
+export type DefectSeverity = "low" | "medium" | "high"
 
-export interface DefectsState {
-  selectedDefectId: DefectId | null
-  setSelectedDefect: (id: DefectId | null) => void
+type DefectsState = {
+  selectedDefectId: string | null
+  selectedSeverity: DefectSeverity
+  setSelectedDefectId: (id: string | null) => void
+  // backward-compat alias used by some UI/components
+  setSelectedDefect?: (id: string | null) => void
+  setSelectedSeverity: (s: DefectSeverity) => void
+  reset: () => void
 }
 
 export const useDefectsStore = create<DefectsState>((set) => ({
   selectedDefectId: null,
-  setSelectedDefect(id) {
-    set({ selectedDefectId: id })
-  },
+  selectedSeverity: 'medium',
+  setSelectedDefectId: (id) => set({ selectedDefectId: id }),
+  setSelectedDefect: (id) => set({ selectedDefectId: id }),
+  setSelectedSeverity: (s) => set({ selectedSeverity: s }),
+  reset: () => set({ selectedDefectId: null, selectedSeverity: 'medium' }),
 }))
 
 export default useDefectsStore

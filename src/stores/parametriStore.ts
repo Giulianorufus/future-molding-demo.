@@ -5,7 +5,8 @@ import { useDrawingStore } from './drawingStore'
 import { usePressStore } from './pressStore'
 import { useMaterialStore } from './materialStore'
 import { useDefectsStore } from './defectsStore'
-import { applyDefectCorrections, type DefectId } from '../calc/defectRules'
+import { applyDefectFix, type DefectSeverity } from '../defects/defectRules'
+import { mapLegacyDefectId, mapLegacySeverity } from '../defects/defectAdapter'
 
 export type ParametriState = {
   lastInput: CalculationInput | null
@@ -14,6 +15,12 @@ export type ParametriState = {
   // compatibility: a `loading` boolean selector is used by presentational UI
   loading: boolean
   error: string | null
+  lastDefectFix: null | {
+    defectId: string
+    severity: DefectSeverity
+    delta?: Record<string, number>
+    notes: string[]
+  }
   ricalcola: (input: CalculationInput) => Promise<void>
   reset: () => void
 }
@@ -24,6 +31,7 @@ export const useParametriStore = create<ParametriState>((set) => ({
   isCalculating: false,
   loading: false,
   error: null,
+  lastDefectFix: null,
   async ricalcola(input) {
     set({ isCalculating: true, loading: true, error: null })
     try {
@@ -36,7 +44,7 @@ export const useParametriStore = create<ParametriState>((set) => ({
     }
   },
   reset() {
-    set({ lastInput: null, result: null, isCalculating: false, loading: false, error: null })
+    set({ lastInput: null, result: null, isCalculating: false, loading: false, error: null, lastDefectFix: null })
   },
 }))
 
@@ -82,9 +90,72 @@ if (typeof window !== 'undefined') {
       }
 
       // Read defect selection and apply corrections (pure function)
-      const defectId = (ds?.selectedDefectId as DefectId) ?? null
-      const finalInput = applyDefectCorrections(baseInput as any, defectId) as CalculationInput
-      return finalInput
+      const defectsState: any = useDefectsStore.getState?.() ?? {}
+      const defectId = mapLegacyDefectId(defectsState.selectedDefectId)
+      const severity = mapLegacySeverity(defectsState.selectedSeverity)
+
+      function applyDefectDeltaToInput(baseInput: any, delta: any) {
+        if (!delta) return baseInput
+
+        const next: any = { ...baseInput }
+
+        next.injection = { ...(baseInput.injection ?? {}) }
+        next.packing = { ...(baseInput.packing ?? {}) }
+        next.temps = { ...(baseInput.temps ?? {}) }
+
+        const pct = (v: number, p: number) => v * (1 + p / 100)
+
+        if (typeof delta.injectionSpeed_pct === 'number' && typeof next.injection.speed === 'number') {
+          next.injection.speed = pct(next.injection.speed, delta.injectionSpeed_pct)
+        }
+        if (typeof delta.injectionPressure_pct === 'number' && typeof next.injection.pressure === 'number') {
+          next.injection.pressure = pct(next.injection.pressure, delta.injectionPressure_pct)
+        }
+        if (typeof delta.switchOver_pct === 'number' && typeof next.injection.switchover === 'number') {
+          next.injection.switchover = pct(next.injection.switchover, delta.switchOver_pct)
+        }
+
+        if (typeof delta.packPressure_pct === 'number' && typeof next.packing.pressure === 'number') {
+          next.packing.pressure = pct(next.packing.pressure, delta.packPressure_pct)
+        }
+        if (typeof delta.packTime_pct === 'number' && typeof next.packing.time === 'number') {
+          next.packing.time = pct(next.packing.time, delta.packTime_pct)
+        }
+
+        if (typeof delta.meltTemp_C === 'number' && typeof next.temps.melt === 'number') {
+          next.temps.melt = next.temps.melt + delta.meltTemp_C
+        }
+        if (typeof delta.moldTemp_C === 'number' && typeof next.temps.mold === 'number') {
+          next.temps.mold = next.temps.mold + delta.moldTemp_C
+        }
+
+        if (typeof delta.backPressure_pct === 'number' && typeof next.plasticizing?.backPressure === 'number') {
+          next.plasticizing = { ...(baseInput.plasticizing ?? {}) }
+          next.plasticizing.backPressure = pct(next.plasticizing.backPressure, delta.backPressure_pct)
+        }
+
+        return next
+      }
+
+      let finalInput = baseInput as any
+      if (defectId) {
+        const fix = applyDefectFix(defectId, severity)
+        try {
+          ;(useParametriStore as any).setState({
+            lastDefectFix: {
+              defectId,
+              severity,
+              delta: fix.delta ?? undefined,
+              notes: fix.notes,
+            },
+          })
+        } catch (_) {
+          // best-effort: do not throw if setState isn't available in some test envs
+        }
+        finalInput = applyDefectDeltaToInput(baseInput, fix.delta)
+      }
+
+      return finalInput as CalculationInput
     }
 
     function inputsEqual(a: CalculationInput | null, b: CalculationInput | null): boolean {

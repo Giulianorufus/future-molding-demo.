@@ -29,3 +29,8 @@ Thumbs.db
 coverage/
 project-full-preview.txt
 project-full-preview/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+**/.last-run.json

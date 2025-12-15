@@ -1,97 +1,199 @@
-import { useState } from "react";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+
+// ⚠️ Se il path è diverso nel tuo progetto, cambia SOLO questa riga:
 import { useDrawingLibraryStore } from "../stores/useDrawingLibraryStore";
-import useDrawingStore from "../stores/drawingStore";
-import { useDrawingUpload } from "@/hooks/useDrawingUpload";
+
+// Canonico
+import { useDrawingStore } from "../stores/drawingStore";
+
+type AnyDrawing = Record<string, any>;
+
+function pushToDrawingStore(d: AnyDrawing | null | undefined) {
+  if (!d) return;
+
+  const ds: any = useDrawingStore.getState?.() ?? null;
+  if (!ds) return;
+
+  const glbUrl = d.glbUrl ?? d.modelUrl ?? d.viewerUrl ?? d.previewUrl ?? null;
+  const previewUrl = d.previewUrl ?? d.viewerUrl ?? glbUrl ?? null;
+
+  const volumeCm3 =
+    typeof d.volumeCm3 === "number"
+      ? d.volumeCm3
+      : typeof d.volume === "number"
+      ? d.volume
+      : null;
+
+  const areaCm2 =
+    typeof d.areaCm2 === "number"
+      ? d.areaCm2
+      : typeof d.area === "number"
+      ? d.area
+      : null;
+
+  const boundingBox = d.boundingBox ?? d.bbox ?? null;
+
+  if (typeof ds.setResult === "function") {
+    ds.setResult({
+      ...d,
+      glbUrl,
+      previewUrl,
+      volumeCm3,
+      areaCm2,
+      boundingBox,
+    });
+  } else {
+    if (typeof ds.setGlbUrl === "function") ds.setGlbUrl(glbUrl);
+    if (typeof ds.setModelUrl === "function") ds.setModelUrl(glbUrl);
+    if (typeof ds.setViewerUrl === "function") ds.setViewerUrl(previewUrl);
+    if (typeof ds.setPreviewUrl === "function") ds.setPreviewUrl(previewUrl);
+    if (typeof ds.setVolumeCm3 === "function" && typeof volumeCm3 === "number") ds.setVolumeCm3(volumeCm3);
+    if (typeof ds.setAreaCm2 === "function" && typeof areaCm2 === "number") ds.setAreaCm2(areaCm2);
+    if (typeof ds.setBoundingBox === "function" && boundingBox) ds.setBoundingBox(boundingBox);
+  }
+}
 
 export default function DisegniPage() {
-  const drawings = useDrawingLibraryStore((s) => s.drawings);
-  const addDrawing = useDrawingLibraryStore((s) => s.addDrawing);
-  const removeDrawing = useDrawingLibraryStore((s) => s.removeDrawing);
+  const nav = useNavigate();
 
-  const [uploading, setUploading] = useState(false);
-  const { handleUpload: uploadFile, isUploading } = useDrawingUpload();
+  const drawings = useDrawingLibraryStore((s: any) => s.items ?? s.drawings ?? []);
+  const selectedId = useDrawingLibraryStore((s: any) => s.selectedId ?? s.currentId ?? s.activeId ?? null);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const selectDrawing =
+    useDrawingLibraryStore((s: any) => s.selectDrawing ?? s.setSelectedId ?? s.setCurrentId ?? s.setActiveId) as
+      | ((id: string) => void)
+      | undefined;
 
-    setUploading(true);
+  const removeDrawing =
+    useDrawingLibraryStore((s: any) => s.removeDrawing ?? s.deleteDrawing ?? s.remove) as
+      | ((id: string) => void)
+      | undefined;
 
-    try {
-      const id = await uploadFile(file);
-      // read latest drawingStore state populated by the pipeline
-      const ds = useDrawingStore.getState();
-      addDrawing({
-        fileName: file.name,
-        glbUrl: ds.previewUrl ?? null,
-        volumeCm3: ds.volumeCm3 ?? null,
-      });
-    } catch (err) {
-      console.error("Errore caricamento:", err);
-    }
+  const addFromFile =
+    useDrawingLibraryStore((s: any) => s.addFromFile ?? s.importFile ?? s.addFile) as
+      | ((file: File) => Promise<any> | any)
+      | undefined;
 
-    setUploading(false);
+  const canUpload = typeof addFromFile === "function";
+
+  const list: AnyDrawing[] = useMemo(() => (Array.isArray(drawings) ? drawings : []), [drawings]);
+
+  const onSelect = (d: AnyDrawing) => {
+    const id = String(d.id ?? d.key ?? d.name ?? "");
+    if (id && typeof selectDrawing === "function") selectDrawing(id);
+    pushToDrawingStore(d);
   };
 
-  const handleOpen = (d: any) => {
-    // Rimanda al wizard caricando i dati del disegno
-    useDrawingStore.getState().setResult({
-      glbUrl: d.glbUrl ?? null,
-      volumeCm3: d.volumeCm3 ?? null,
-      previewUrl: d.glbUrl ?? null,
-    });
+  const onOpenWizard = () => {
+    nav("/wizard");
+  };
 
-    window.location.hash = "#/wizard";
+  const onUpload = async (file: File) => {
+    if (!canUpload || !addFromFile) return;
+
+    const res = await addFromFile(file);
+    if (res && typeof res === "object") {
+      onSelect(res);
+    } else {
+      const last = list[list.length - 1];
+      if (last) onSelect(last);
+    }
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Disegni</h1>
+    <main className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Disegni</h1>
 
-      <div className="bg-white rounded shadow p-4 mb-8">
-        <h2 className="font-semibold mb-2">Carica disegno tecnico</h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="px-3 py-2 rounded bg-yellow-400 text-black font-medium"
+            onClick={onOpenWizard}
+          >
+            Apri Wizard
+          </button>
 
-        <input type="file" className="border p-2" onChange={handleUpload} />
-        {uploading && <p className="text-blue-600 mt-2">Caricamento...</p>}
+          <label className="px-3 py-2 rounded bg-blue-700 text-white font-medium cursor-pointer">
+            <input
+              data-testid="drawings-upload"
+              type="file"
+              className="hidden"
+              disabled={!canUpload}
+              accept=".stp,.step,.iges,.igs,.stl,.glb,.gltf"
+              onChange={(e) => {
+                const f = e.currentTarget.files?.[0];
+                if (f) void onUpload(f);
+                e.currentTarget.value = "";
+              }}
+            />
+            Carica file
+          </label>
+        </div>
       </div>
 
-      <h2 className="font-semibold mb-3">Disegni salvati</h2>
-
-      {drawings.length === 0 && (
-        <p className="text-gray-500">Nessun disegno presente.</p>
+      {!canUpload && (
+        <div className="mt-3 text-sm text-gray-600">
+          Caricamento da questa pagina non disponibile (manca azione store). Usa “Apri Wizard”.
+        </div>
       )}
 
-      <div className="grid gap-3">
-        {drawings.map((d) => (
-          <div
-            key={d.id}
-            className="bg-white shadow p-3 rounded flex justify-between items-center"
-          >
-            <div>
-              <p className="font-medium">{d.fileName}</p>
-              <p className="text-xs text-gray-500">
-                Volume: {d.volumeCm3 ?? "--"} cm³
-              </p>
-            </div>
+      <section className="mt-6">
+        <div className="text-sm text-gray-600 mb-2">Libreria</div>
 
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1 bg-blue-600 text-white rounded"
-                onClick={() => handleOpen(d)}
-              >
-                Apri
-              </button>
-
-              <button
-                className="px-3 py-1 bg-red-600 text-white rounded"
-                onClick={() => removeDrawing(d.id)}
-              >
-                Elimina
-              </button>
+        <div data-testid="drawings-list" className="grid gap-2">
+          {list.length === 0 ? (
+            <div className="p-3 rounded border border-gray-200 text-sm text-gray-600">
+              Nessun disegno salvato. Carica un file (o apri il Wizard) per iniziare.
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          ) : (
+            list.map((d) => {
+              const id = String(d.id ?? d.key ?? d.name ?? "");
+              const name = String(d.name ?? d.fileName ?? d.title ?? id);
+              const isSelected = selectedId != null && String(selectedId) === id;
+
+              return (
+                <div
+                  key={id || name}
+                  data-testid={`drawing-item-${id}`}
+                  className={`p-3 rounded border flex items-center justify-between gap-3 ${
+                    isSelected ? "border-yellow-400 bg-yellow-50" : "border-gray-200"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{name}</div>
+                    <div className="text-xs text-gray-600">
+                      {d.materialId ? `Materiale: ${d.materialId}` : ""}
+                      {typeof d.volumeCm3 === "number" ? ` • Volume: ${d.volumeCm3} cm³` : ""}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="px-3 py-2 rounded bg-blue-700 text-white"
+                      onClick={() => onSelect(d)}
+                    >
+                      Seleziona
+                    </button>
+
+                    {typeof removeDrawing === "function" && id ? (
+                      <button
+                        type="button"
+                        className="px-3 py-2 rounded border border-gray-300"
+                        onClick={() => removeDrawing(id)}
+                      >
+                        Rimuovi
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+    </main>
   );
 }

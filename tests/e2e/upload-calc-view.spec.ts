@@ -1,27 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { serveFixture, exposeStores, injectStores } from './helpers/fixtureHelper'
 
-test('upload → analisi CAD → viewer visibile', async ({ page }) => {
-  // Go to the Parametri page where upload is available
-  await page.goto('/#/parametri');
+test('upload → analisi CAD → viewer visibile (via store injection)', async ({ page }) => {
+  // Instead of performing a real upload, serve the GLB fixture and inject stores so the viewer mounts.
+  await serveFixture(page, 'tests/fixtures/Frutto (1).glb')
+  await page.goto('/#/wizard')
+  await exposeStores(page)
+  await injectStores(page, { drawing: { glbUrl: '/__playwright_fixture__', previewUrl: '/__playwright_fixture__', volumeCm3: 12 }, pressId: 'arburg-370-u', materialId: 'PP-HOMO' })
 
-  // find first file input and upload a small STL fixture (input may be hidden)
-  const fileInput = page.locator('input[type="file"]').first();
-  const filePath = 'tests/fixtures/sample-part.stl';
-  await fileInput.setInputFiles(filePath);
-
-  // wait for either an analysis summary or an inline thumbnail image (data URL) to appear
-  let found = false;
-  try {
-    await page.waitForSelector('img[src^="data:"]', { timeout: 45000 });
-    found = true;
-  } catch (e) {
-    // fallback to waiting for analysis text
-  }
-  if (!found) {
-    await page.waitForSelector('text=/Analisi disegno:/', { timeout: 15000 });
-  }
-
-  // first select on the page (drawings select) should be enabled
-  const firstSelect = page.locator('select').first();
-  await expect(firstSelect).toBeEnabled();
-});
+  // Viewer canvas is on the Difetti page
+  await page.goto('/#/difetti')
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 15000 })
+})

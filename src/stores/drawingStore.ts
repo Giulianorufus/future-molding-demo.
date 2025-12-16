@@ -5,6 +5,7 @@ export type DrawingState = {
   volumeCm3: number | null
   surfaceCm2: number | null
   boundingBox: { x: number; y: number; z: number } | null
+  mesh?: { positions: Float32Array | number[]; indices?: Uint32Array | number[]; bbox_mm?: { x: number; y: number; z: number } | null } | null
   previewUrl: string | null
   isLoading: boolean
   error: string | null

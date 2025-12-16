@@ -44,6 +44,15 @@ export async function startCadPipeline(file: File) {
       volumeCm3: (result as any).volume ?? null,
       surfaceCm2: (result as any).projectedArea_cm2 ?? (result as any).surface_area ?? null,
       boundingBox: (result as any).bbox ?? null,
+      mesh: (result as any).meshes && (result as any).meshes.length > 0
+        ? (function () {
+            const m = (result as any).meshes[0];
+            const positions = m.positions instanceof Float32Array ? m.positions : (Array.isArray(m.positions) ? Float32Array.from(m.positions) : undefined);
+            const indices = m.indices ? (m.indices instanceof Uint32Array ? m.indices : Uint32Array.from(m.indices)) : undefined;
+            const bbox = (result as any).bbox ?? null
+            return { positions, indices, bbox_mm: bbox }
+          })()
+        : null,
       isLoading: false,
       error: null,
     });

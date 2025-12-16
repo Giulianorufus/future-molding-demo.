@@ -97,8 +97,26 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
             if (saved && (saved as any).id) {
               toast({ title: 'Salvato localmente', description: `Disegno salvato con id ${(saved as any).id}` });
                 try {
-                  // set drawing store preview so viewers can load the uploaded file immediately
-                  useDrawingStore.getState().setResult({ previewUrl: thumbnail });
+                  // set drawing store preview and minimal mesh data so parametriStore can derive CadAnalysisMeta
+                  const mesh = (analysis as any).meshes && (analysis as any).meshes.length > 0 ? (analysis as any).meshes[0] : null
+                  let meshData: any = null
+                  if (mesh) {
+                    const positions = mesh.positions instanceof Float32Array ? mesh.positions : Float32Array.from(mesh.positions || [])
+                    const indices = mesh.indices ? (mesh.indices instanceof Uint32Array ? mesh.indices : Uint32Array.from(mesh.indices)) : undefined
+                    // compute bbox from positions if not provided
+                    let bbox = (analysis as any).bbox ?? null
+                    if (!bbox && positions && positions.length >= 3) {
+                      let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity
+                      for (let i = 0; i < positions.length; i += 3) {
+                        const x = positions[i], y = positions[i+1], z = positions[i+2]
+                        if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
+                        if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
+                      }
+                      bbox = { x: Math.max(0, maxX - minX), y: Math.max(0, maxY - minY), z: Math.max(0, maxZ - minZ) }
+                    }
+                    meshData = { positions, indices, bbox_mm: bbox }
+                  }
+                  useDrawingStore.getState().setResult({ previewUrl: thumbnail, mesh: meshData });
                 } catch (e) {
                   log.warn('Setting drawing store failed', e);
                 }

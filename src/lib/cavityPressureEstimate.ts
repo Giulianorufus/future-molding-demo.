@@ -29,8 +29,13 @@ function inferFamily(id?: string | null) {
 
 export function estimateCavityPressure(input: CavityPressureInput): CavityPressureResult {
   const family = inferFamily(input.materialId)
-  const thickness = Number(input.thickness_mm ?? 0)
+  const thicknessRaw = input.thickness_mm ?? 0
   const flow = Number(input.flowLength_mm ?? 0)
+
+  // Guardrails for thickness (mm)
+  const THICK_MIN = 0.6
+  const THICK_MAX = 8
+  const thicknessUsed = thicknessRaw > 0 ? Math.max(THICK_MIN, Math.min(THICK_MAX, Number(thicknessRaw))) : 0
 
   // base by family
   let base = 450
@@ -39,19 +44,27 @@ export function estimateCavityPressure(input: CavityPressureInput): CavityPressu
   if (family === 'pc' || family === 'pa') base = 600
   if (family === 'pbt') base = 480
 
-  // L/t
-  const L_over_t = thickness > 0 ? (flow > 0 ? flow / thickness : 20) : 20
+  // L/t with guardrails
+  let L_over_t = 20
+  if (thicknessUsed > 0) {
+    L_over_t = flow > 0 ? flow / thicknessUsed : 20
+  } else {
+    L_over_t = flow > 0 ? flow / 1.5 : 20 // fallback assume reasonable thickness
+  }
+  // clamp L/t to avoid extreme amplification
+  L_over_t = Math.max(10, Math.min(250, L_over_t))
   const ltExtra = Math.max(0, L_over_t - 20) * 5 // +5 bar per unit above 20
 
   // thickness effect (thin parts need more pressure)
   let thicknessAdjust = 0
-  if (thickness > 0) {
-    if (thickness < 1.5) thicknessAdjust = 50
-    else if (thickness >= 3.5) thicknessAdjust = -30
+  if (thicknessUsed > 0) {
+    if (thicknessUsed < 1.5) thicknessAdjust = 50
+    else if (thicknessUsed >= 3.5) thicknessAdjust = -30
   }
 
   let estimated = Math.round(base + ltExtra + thicknessAdjust)
-  const reason = `family=${family};base=${base};L/t=${L_over_t.toFixed(1)};ltExtra=${Math.round(ltExtra)};thicknessAdj=${thicknessAdjust}`
+  const source = thicknessRaw > 0 ? 'mesh' : 'fallback'
+  const reason = `source=${source};family=${family};base=${base};thickness_mm=${thicknessUsed.toFixed(1)};L/t=${L_over_t.toFixed(1)};ltExtra=${Math.round(ltExtra)};thicknessAdj=${thicknessAdjust}`
 
   if (estimated < MIN_BAR) estimated = MIN_BAR
   if (estimated > MAX_BAR) estimated = MAX_BAR

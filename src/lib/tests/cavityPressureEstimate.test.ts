@@ -17,4 +17,14 @@ describe("estimateCavityPressure", () => {
     const low = estimateCavityPressure({ materialId: 'PP', thickness_mm: 10, flowLength_mm: 10 });
     expect(low.estimatedCavityPressure_bar).toBeGreaterThanOrEqual(250);
   });
+
+  it('uses provided thickness and clamps L/t', () => {
+    const r = estimateCavityPressure({ materialId: 'PP', thickness_mm: 0.1, flowLength_mm: 5000 });
+    // thickness should be clamped to 0.6mm in reason
+    expect(r.reason).toMatch(/thickness_mm=0\.6/)
+    const m = r.reason.match(/L\/t=(\d+\.?\d*)/)
+    expect(m).not.toBeNull()
+    const lt = Number(m![1])
+    expect(lt).toBeLessThanOrEqual(250)
+  })
 });

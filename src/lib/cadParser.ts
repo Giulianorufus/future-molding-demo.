@@ -50,6 +50,81 @@ function computeFromMeshes(meshes: any[] | undefined) {
   return { volume_cm3: vol_mm3 / 1000, area_cm2: area_mm2 / 100 };
 }
 
+// --- API-stability helpers & normalization ---
+type AnyMesh = any;
+
+function flattenTriplets(arr: any): any {
+  if (!arr) return arr;
+  if (Array.isArray(arr) && arr.length > 0 && Array.isArray(arr[0])) {
+    return arr.flat();
+  }
+  return arr;
+}
+
+function normalizeMeshes(meshes: AnyMesh[] | undefined | null): ParsedCADResult["meshes"] {
+  if (!meshes || !Array.isArray(meshes)) return [];
+
+  return meshes
+    .map((m) => {
+      const positions =
+        m.positions ??
+        m.attributes?.position?.array ??
+        m.attributes?.position?.Array ??
+        m.attributes?.position?.data;
+
+      const indices =
+        m.indices ??
+        m.index?.array ??
+        m.attributes?.index?.array ??
+        m.attributes?.index?.data;
+
+      const normals =
+        m.normals ??
+        m.attributes?.normal?.array ??
+        m.attributes?.normal?.data;
+
+      const posFlat = flattenTriplets(positions);
+      const idxFlat = flattenTriplets(indices);
+      const nrmFlat = flattenTriplets(normals);
+
+      if (!posFlat) return null;
+
+      return {
+        positions: posFlat,
+        indices: idxFlat,
+        normals: nrmFlat,
+      };
+    })
+    .filter(Boolean) as any;
+}
+
+function pickOcctFn(occt: any, names: string[]): ((data: Uint8Array, arg2: any) => any) | null {
+  for (const n of names) {
+    const fn = occt?.[n];
+    if (typeof fn === "function") return fn.bind(occt);
+  }
+  return null;
+}
+
+async function callOcctReader(fn: (data: Uint8Array, arg2: any) => any, data: Uint8Array, fileName: string) {
+  try {
+    return await Promise.resolve(fn(data, null));
+  } catch (e1) {
+    return await Promise.resolve(fn(data, fileName || null));
+  }
+}
+
+function failSoftResult(ext: string, message: string): ParsedCADResult {
+  console.warn(message);
+  return {
+    volume_cm3: 0,
+    area_cm2: 0,
+    thickness_mm: null,
+    features: ["occt-unavailable", `ext:${ext}`],
+    meshes: [],
+  };
+}
+
 export async function parseCAD(file: File, onProgress?: (st: { progress?: number; status?: string; message?: string }) => void): Promise<ParsedCADResult> {
   const ext = file.name.split('.').pop()?.toLowerCase();
   const arrayBuffer = await file.arrayBuffer();
@@ -100,9 +175,9 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
         worker.postMessage({ id, arrayBuffer, fileName: file.name, ext }, [arrayBuffer]);
       });
       const out = await p;
-      const meshes = out.meshes ?? null;
+      const meshes = normalizeMeshes(out.meshes ?? null);
       const g = computeFromMeshes(meshes ?? undefined);
-      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes: meshes ?? null } as ParsedCADResult;
+      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
     } catch (e) {
       // fallback to main-thread parse with clearer message
       console.warn('Worker parsing failed, falling back to main thread:', e);
@@ -114,31 +189,55 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
     }
   }
 
-  // Main-thread parsing fallback
+  // Main-thread parsing fallback (API-stable, multi-name readers, fail-soft)
   try {
-    const occtInit = await import('./occtInit');
+    const occtInit = await import("./occtInit");
     const occt = await occtInit.getOcct();
     const data = new Uint8Array(arrayBuffer);
-    if (ext === 'step' || ext === 'stp') {
-      const res = await occt.readStepFile(data, file.name || 'model.step');
-      const g = computeFromMeshes(res.meshes);
-      // schedule unload after inactivity to free wasm memory if supported
-      try { occtInit.scheduleUnloadOcct(); } catch (e) {}
-      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes: res.meshes ?? null } as ParsedCADResult;
-    } else if (ext === 'iges' || ext === 'igs') {
-      const res = await occt.readIgesFile(data, file.name || 'model.iges');
-      const g = computeFromMeshes(res.meshes);
-      try { occtInit.scheduleUnloadOcct(); } catch (e) {}
-      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes: res.meshes ?? null } as ParsedCADResult;
-    } else if (ext === 'stl') {
-      const res = await occt.readStlFile(data, file.name || 'model.stl');
-      const meshArr = res.meshes ?? (res.mesh ? [res.mesh] : []);
-      const g = computeFromMeshes(meshArr);
-      try { occtInit.scheduleUnloadOcct(); } catch (e) {}
-      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes: meshArr } as ParsedCADResult;
+
+    if (ext === "step" || ext === "stp") {
+      const fn = pickOcctFn(occt, ["ReadStepFile", "readStepFile", "ReadSTEPFile", "readSTEPFile"]);
+      if (!fn) return failSoftResult(ext, "OCCT API mismatch: no STEP reader found on occt instance.");
+
+      const res = await callOcctReader(fn, data, file.name || "model.step");
+      if (res?.success === false) return failSoftResult(ext, "OCCT STEP import failed (success=false).");
+
+      const meshes = normalizeMeshes(res?.meshes);
+      const g = computeFromMeshes(meshes as any);
+
+      try { occtInit.scheduleUnloadOcct(); } catch (_) {}
+      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
+    }
+
+    if (ext === "iges" || ext === "igs") {
+      const fn = pickOcctFn(occt, ["ReadIgesFile", "readIgesFile", "ReadIGESFile", "readIGESFile"]);
+      if (!fn) return failSoftResult(ext, "OCCT API mismatch: no IGES reader found on occt instance.");
+
+      const res = await callOcctReader(fn, data, file.name || "model.iges");
+      if (res?.success === false) return failSoftResult(ext, "OCCT IGES import failed (success=false).");
+
+      const meshes = normalizeMeshes(res?.meshes);
+      const g = computeFromMeshes(meshes as any);
+
+      try { occtInit.scheduleUnloadOcct(); } catch (_) {}
+      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
+    }
+
+    if (ext === "stl") {
+      const fn = pickOcctFn(occt, ["ReadStlFile", "readStlFile", "ReadSTLFile", "readSTLFile"]);
+      if (!fn) return failSoftResult(ext, "OCCT API mismatch: no STL reader found on occt instance.");
+
+      const res = await callOcctReader(fn, data, file.name || "model.stl");
+      if (res?.success === false) return failSoftResult(ext, "OCCT STL import failed (success=false).");
+
+      const meshes = normalizeMeshes(res?.meshes ?? (res?.mesh ? [res.mesh] : []));
+      const g = computeFromMeshes(meshes as any);
+
+      try { occtInit.scheduleUnloadOcct(); } catch (_) {}
+      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
     }
   } catch (e: any) {
-    throw new Error(`occt-import-js parsing failed: ${e?.message ?? e}`);
+    return failSoftResult(ext ?? "unknown", `occt-import-js parsing failed: ${e?.message ?? e}`);
   }
 
   throw new Error('Formato CAD non supportato');

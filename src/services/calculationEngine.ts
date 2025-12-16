@@ -1,7 +1,8 @@
 // Legacy appStore types removed; keep this service self-contained
 import { findMaterialById, type IMaterial, type Brand, findPressModel } from '../fm-core';
 import { getPressSpecs } from '../lib/pressData';
-import { computeClampForce, estimateProjectedAreaFromBbox_mm } from "../lib/clampForce";
+import { computeClampForce, estimateProjectedAreaFromBbox_mm, estimateProjectedAreaFromBbox3_mm } from "../lib/clampForce";
+import { tuneClampForDefect } from "../lib/defectClampTuning";
 
 export function calculateInjection(
   params: { spessore: number; volumeCavita: number; volumeMaterozza: number; cushion: number },
@@ -123,16 +124,32 @@ export function calculateInjection(
   if (warnings.length) (result as any).errors = warnings;
 
   // --- Clamp force estimate (added) ---
-  const projectedArea_cm2 = estimatedProjectedArea_cm2;
+  // try read projected area from CAD analysis meta if available (non-blocking)
+  const projectedFromCad =
+    (globalThis as any)?.cadAnalysis?.meta?.projectedArea_cm2 ??
+    estimateProjectedAreaFromBbox3_mm((globalThis as any)?.cadAnalysis?.meta?.bbox_mm);
 
-  const cavityPressure_bar =
-    (result as any)?.pack_bar ?? (result as any)?.injectionPressure_bar ?? 450;
+  const projectedArea_cm2 = projectedFromCad && projectedFromCad > 0 ? projectedFromCad : estimatedProjectedArea_cm2;
 
-  const clamp = computeClampForce({
-    projectedArea_cm2,
-    cavityPressure_bar,
-    safetyFactor: 1.15,
+  const cavityPressure_bar = (result as any)?.pack_bar ?? (result as any)?.injectionPressure_bar ?? 450;
+
+  // --- defect-based tuning (non-invasive, best-effort) ---
+  const baseCavityPressure_bar = cavityPressure_bar;
+  const baseSafetyFactor = 1.15;
+
+  const lastDefectFix = (globalThis as any)?.parametriStore?.lastDefectFix ?? (globalThis as any)?.defectsStore?.lastDefectFix ?? null;
+
+  const defectId = lastDefectFix?.defectId ?? (globalThis as any)?.defectsStore?.selectedDefectId ?? null;
+  const severity = lastDefectFix?.severity ?? (globalThis as any)?.defectsStore?.selectedSeverity ?? null;
+
+  const tuned = tuneClampForDefect({
+    defectId,
+    severity,
+    baseCavityPressure_bar,
+    baseSafetyFactor,
   });
+
+  const clamp = computeClampForce({ projectedArea_cm2, cavityPressure_bar: tuned.tunedCavityPressure_bar, safetyFactor: tuned.tunedSafetyFactor });
 
   const pressClamp_t = clamp_t ?? 0;
   const pressClamp_kN = pressClamp_t * 9.80665; // ton -> kN approx

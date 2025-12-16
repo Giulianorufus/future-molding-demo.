@@ -11,7 +11,13 @@ import { parseCAD } from "../cadParser";
 // avoid tight typing here; we only need a Jest mock helper
 const parseCADMock = parseCAD as unknown as any;
 
-describe("cadAnalysis", () => {
+const RUN_CAD =
+  process.env.RUN_CAD_INTEGRATION === "1" ||
+  process.env.RUN_CAD_INTEGRATION === "true";
+
+const describeCad = RUN_CAD ? describe : describe.skip;
+
+describeCad("cadAnalysis (integration)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 

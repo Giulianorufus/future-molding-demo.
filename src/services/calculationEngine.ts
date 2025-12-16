@@ -3,6 +3,7 @@ import { findMaterialById, type IMaterial, type Brand, findPressModel } from '..
 import { getPressSpecs } from '../lib/pressData';
 import { computeClampForce, estimateProjectedAreaFromBbox_mm, estimateProjectedAreaFromBbox3_mm } from "../lib/clampForce";
 import { tuneClampForDefect } from "../lib/defectClampTuning";
+import { estimateCavityPressure } from "../lib/cavityPressureEstimate";
 import type { CadAnalysisMeta } from "../types/cadAnalysisMeta";
 
 export type CalcContext = {
@@ -139,7 +140,17 @@ export function calculateInjection(
 
   const projectedArea_cm2 = projectedFromCad && projectedFromCad > 0 ? projectedFromCad : estimatedProjectedArea_cm2;
 
-  const cavityPressure_bar = (result as any)?.pack_bar ?? (result as any)?.injectionPressure_bar ?? 450;
+  const cavityPressure_bar_raw = (result as any)?.pack_bar ?? (result as any)?.injectionPressure_bar ?? null;
+  let cavityPressure_bar = cavityPressure_bar_raw
+  let cavityPressureReason = cavityPressure_bar_raw ? 'from_result' : 'default_450'
+
+  if (!cavityPressure_bar_raw) {
+    const matId = (material as any)?.id ?? null
+    const cadMeta = context?.cadAnalysisMeta
+    const est = estimateCavityPressure({ materialId: matId, thickness_mm: cadMeta?.thickness_mm ?? null, flowLength_mm: cadMeta?.flowLength_mm ?? null, volume_cm3: cadMeta?.volume_cm3 ?? null })
+    cavityPressure_bar = est.estimatedCavityPressure_bar
+    cavityPressureReason = est.reason
+  }
 
   // --- defect-based tuning (non-invasive, best-effort) ---
   const baseCavityPressure_bar = cavityPressure_bar;

@@ -5,6 +5,7 @@ import { computeClampForce, estimateProjectedAreaFromBbox_mm, estimateProjectedA
 import { tuneClampForDefect } from "../lib/defectClampTuning";
 import { estimateCavityPressure } from "../lib/cavityPressureEstimate";
 import type { CadAnalysisMeta } from "../types/cadAnalysisMeta";
+import { applyPressLimits } from '../lib/pressLimits'
 
 export type CalcContext = {
   defectId?: string | null;
@@ -209,6 +210,22 @@ export function calculateInjection(
   (result as any).warnings = Array.from(new Set([...(result as any).errors ?? [], ...warningsClamp]));
   (result as any).assumptions = assumptions;
   (result as any).sources = sources;
+
+  // --- Apply press limits (clamp calculated params to press capabilities) ---
+  try {
+    const pressLimitsRes = applyPressLimits(result, pressSpecs as any)
+    const added = pressLimitsRes.warningsAdded || []
+    const clampedFields = pressLimitsRes.clampedFields || []
+    if (added.length) {
+      (result as any).warnings = Array.from(new Set([...(result as any).warnings ?? [], ...added]))
+    }
+    if (clampedFields.length) {
+      (result as any).assumptions = Array.from(new Set([...(result as any).assumptions ?? [], 'Applied press limits clamp']))
+      ;(result as any).sources = { ...(result as any).sources ?? {}, clampApplied: true }
+    }
+  } catch (e) {
+    // best-effort: do not break calculation flow
+  }
 
   return result;
 }

@@ -43,38 +43,36 @@ export const useParametriStore = create<ParametriState>((set) => ({
           const d = useDrawingStore.getState()
           const boundingBox = d?.boundingBox ?? null
           const bboxObj = boundingBox ? { x: Number(boundingBox.x ?? 0), y: Number(boundingBox.y ?? 0), z: Number(boundingBox.z ?? 0) } : null
-          // attempt mesh-derived projected area if a mesh is attached to drawing store (non-breaking)
-          let projectedArea_cm2: number | undefined = d?.surfaceCm2 ?? undefined
-          let projectedAreaReason = 'surface-cached'
+          // attempt to build rich cadAnalysisMeta from mesh if available
+          let cadAnalysisMeta: any = null
           try {
             const mesh: any = (d as any)?.mesh
             if (mesh && (mesh.positions || mesh.indices)) {
-              const axisGuess: 'x' | 'y' | 'z' = bboxObj
-                ? (['x', 'y', 'z'] as const)[[bboxObj.x, bboxObj.y, bboxObj.z].indexOf(Math.min(bboxObj.x, bboxObj.y, bboxObj.z))]
-                : 'z'
-              const meshRes = projectedAreaFromMesh(mesh.positions, mesh.indices, axisGuess)
-              projectedArea_cm2 = meshRes.projectedArea_cm2
-              projectedAreaReason = meshRes.reason
+              const meta = require('../lib/cadMetaFromMesh').buildCadAnalysisMetaFromMesh({ positions: mesh.positions, indices: mesh.indices, bbox_mm: bboxObj })
+              cadAnalysisMeta = {
+                bbox_mm: bboxObj,
+                projectedArea_cm2: meta.projectedArea_cm2,
+                thickness_mm: meta.thickness_mm,
+                flowLength_mm: meta.flowLength_mm,
+                volume_cm3: meta.volume_cm3,
+                surfaceArea_mm2: meta.surfaceArea_mm2,
+                _projectedAreaReason: meta.projectedAreaReason,
+              }
             }
           } catch (_) {
-            // best-effort: ignore mesh errors
+            // ignore mesh errors; fall back to bbox-based estimates
           }
 
-          if (!projectedArea_cm2 && bboxObj) {
-            const fallback = estimateProjectedAreaFromBboxFallback(bboxObj, 'z')
-            projectedArea_cm2 = fallback.projectedArea_cm2
-            projectedAreaReason = fallback.reason
+          if (!cadAnalysisMeta && bboxObj) {
+            const fallbackArea = estimateProjectedAreaFromBboxFallback(bboxObj, 'z')
+            cadAnalysisMeta = {
+              bbox_mm: bboxObj,
+              projectedArea_cm2: d?.surfaceCm2 ?? fallbackArea.projectedArea_cm2,
+              thickness_mm: estimateThicknessFromBbox(bboxObj),
+              flowLength_mm: estimateFlowLengthFromBbox(bboxObj),
+              _projectedAreaReason: fallbackArea.reason,
+            }
           }
-
-          const cadAnalysisMeta = bboxObj
-            ? {
-                bbox_mm: bboxObj,
-                projectedArea_cm2: projectedArea_cm2,
-                thickness_mm: estimateThicknessFromBbox(bboxObj),
-                flowLength_mm: estimateFlowLengthFromBbox(bboxObj),
-                _projectedAreaReason: projectedAreaReason,
-              }
-            : null
           const context: any = {
             defectId: curLastDefect?.defectId ?? null,
             severity: curLastDefect?.severity ?? null,

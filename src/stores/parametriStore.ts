@@ -8,6 +8,7 @@ import { useDefectsStore } from './defectsStore'
 import { applyDefectFix, type DefectSeverity } from '../defects/defectRules'
 import { mapLegacyDefectId, mapLegacySeverity } from '../defects/defectAdapter'
 import { estimateThicknessFromBbox, estimateFlowLengthFromBbox } from '../lib/cadMetaEstimate'
+import { projectedAreaFromMesh, estimateProjectedAreaFromBboxFallback } from '../lib/projectedAreaFromMesh'
 
 export type ParametriState = {
   lastInput: CalculationInput | null
@@ -41,12 +42,37 @@ export const useParametriStore = create<ParametriState>((set) => ({
           const curLastDefect = (useParametriStore as any).getState?.().lastDefectFix ?? null
           const d = useDrawingStore.getState()
           const boundingBox = d?.boundingBox ?? null
-          const cadAnalysisMeta = boundingBox
+          const bboxObj = boundingBox ? { x: Number(boundingBox.x ?? 0), y: Number(boundingBox.y ?? 0), z: Number(boundingBox.z ?? 0) } : null
+          // attempt mesh-derived projected area if a mesh is attached to drawing store (non-breaking)
+          let projectedArea_cm2: number | undefined = d?.surfaceCm2 ?? undefined
+          let projectedAreaReason = 'surface-cached'
+          try {
+            const mesh: any = (d as any)?.mesh
+            if (mesh && (mesh.positions || mesh.indices)) {
+              const axisGuess: 'x' | 'y' | 'z' = bboxObj
+                ? (['x', 'y', 'z'] as const)[[bboxObj.x, bboxObj.y, bboxObj.z].indexOf(Math.min(bboxObj.x, bboxObj.y, bboxObj.z))]
+                : 'z'
+              const meshRes = projectedAreaFromMesh(mesh.positions, mesh.indices, axisGuess)
+              projectedArea_cm2 = meshRes.projectedArea_cm2
+              projectedAreaReason = meshRes.reason
+            }
+          } catch (_) {
+            // best-effort: ignore mesh errors
+          }
+
+          if (!projectedArea_cm2 && bboxObj) {
+            const fallback = estimateProjectedAreaFromBboxFallback(bboxObj, 'z')
+            projectedArea_cm2 = fallback.projectedArea_cm2
+            projectedAreaReason = fallback.reason
+          }
+
+          const cadAnalysisMeta = bboxObj
             ? {
-                bbox_mm: { x: Number(boundingBox.x ?? 0), y: Number(boundingBox.y ?? 0), z: Number(boundingBox.z ?? 0) },
-                projectedArea_cm2: d?.surfaceCm2 ?? undefined,
-                thickness_mm: estimateThicknessFromBbox(boundingBox),
-                flowLength_mm: estimateFlowLengthFromBbox(boundingBox),
+                bbox_mm: bboxObj,
+                projectedArea_cm2: projectedArea_cm2,
+                thickness_mm: estimateThicknessFromBbox(bboxObj),
+                flowLength_mm: estimateFlowLengthFromBbox(bboxObj),
+                _projectedAreaReason: projectedAreaReason,
               }
             : null
           const context: any = {

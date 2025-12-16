@@ -7,6 +7,7 @@ import { useMaterialStore } from './materialStore'
 import { useDefectsStore } from './defectsStore'
 import { applyDefectFix, type DefectSeverity } from '../defects/defectRules'
 import { mapLegacyDefectId, mapLegacySeverity } from '../defects/defectAdapter'
+import { estimateThicknessFromBbox, estimateFlowLengthFromBbox } from '../lib/cadMetaEstimate'
 
 export type ParametriState = {
   lastInput: CalculationInput | null
@@ -41,7 +42,12 @@ export const useParametriStore = create<ParametriState>((set) => ({
           const d = useDrawingStore.getState()
           const boundingBox = d?.boundingBox ?? null
           const cadAnalysisMeta = boundingBox
-            ? { bbox_mm: { x: Number(boundingBox.x ?? 0), y: Number(boundingBox.y ?? 0), z: Number(boundingBox.z ?? 0) }, projectedArea_cm2: d?.surfaceCm2 ?? undefined }
+            ? {
+                bbox_mm: { x: Number(boundingBox.x ?? 0), y: Number(boundingBox.y ?? 0), z: Number(boundingBox.z ?? 0) },
+                projectedArea_cm2: d?.surfaceCm2 ?? undefined,
+                thickness_mm: estimateThicknessFromBbox(boundingBox),
+                flowLength_mm: estimateFlowLengthFromBbox(boundingBox),
+              }
             : null
           const context: any = {
             defectId: curLastDefect?.defectId ?? null,

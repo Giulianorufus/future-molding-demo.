@@ -3,11 +3,12 @@ import { findMaterialById, type IMaterial, type Brand, findPressModel } from '..
 import { getPressSpecs } from '../lib/pressData';
 import { computeClampForce, estimateProjectedAreaFromBbox_mm, estimateProjectedAreaFromBbox3_mm } from "../lib/clampForce";
 import { tuneClampForDefect } from "../lib/defectClampTuning";
+import type { CadAnalysisMeta } from "../types/cadAnalysisMeta";
 
 export type CalcContext = {
   defectId?: string | null;
   severity?: "low" | "medium" | "high" | string | null;
-  cadAnalysisMeta?: any;
+  cadAnalysisMeta?: CadAnalysisMeta | null;
 };
 
 export function calculateInjection(
@@ -132,9 +133,9 @@ export function calculateInjection(
 
   // --- Clamp force estimate (added) ---
   // try read projected area from CAD analysis meta if available (non-blocking)
-  const projectedFromCad =
-    context?.cadAnalysisMeta?.projectedArea_cm2 ??
-    estimateProjectedAreaFromBbox3_mm(context?.cadAnalysisMeta?.bbox_mm);
+  const bboxRaw = context?.cadAnalysisMeta?.bbox_mm
+  const bbox_mm = bboxRaw ? { x: Number(bboxRaw.x ?? 0), y: Number(bboxRaw.y ?? 0), z: Number(bboxRaw.z ?? 0) } : undefined
+  const projectedFromCad = context?.cadAnalysisMeta?.projectedArea_cm2 ?? estimateProjectedAreaFromBbox3_mm(bbox_mm)
 
   const projectedArea_cm2 = projectedFromCad && projectedFromCad > 0 ? projectedFromCad : estimatedProjectedArea_cm2;
 

@@ -25,10 +25,12 @@ export type CalculationResult = {
   cooling: { suggestedC: number }
 }
 
+import type { CadAnalysisMeta } from '../types/cadAnalysisMeta'
+
 export type CalcContext = {
   defectId?: string | null
   severity?: "low" | "medium" | "high" | string | null
-  cadAnalysisMeta?: any
+  cadAnalysisMeta?: CadAnalysisMeta | null
 }
 
 export function calcolaTonnellaggio(volumeCm3: number, materialDensity?: number): number {

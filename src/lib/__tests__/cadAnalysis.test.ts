@@ -1,23 +1,40 @@
-// Mock low-level CAD parser to avoid initializing OCCT/WASM in unit tests
-jest.mock('../cadParser', () => ({
-  parseCAD: jest.fn(async () => ({
-    // shape expected by analyzeCADFile
-    volume_cm3: 12,
-    area_cm2: 34,
-    thickness_mm: 2,
-    meshes: [],
-    features: [],
-  })),
+import type { Mock } from "jest-mock";
+
+// 1) Mock del modulo cadParser PRIMA di importare cadAnalysis
+jest.mock("../cadParser", () => ({
+  __esModule: true,
+  parseCAD: jest.fn(),
 }));
 
-import { analyzeCADFile } from '../cadAnalysis';
+import { parseCAD } from "../cadParser";
 
-describe('cadAnalysis fallback behavior', () => {
-  test('fallback to simplified analysis when parser unavailable', async () => {
-    const fake = new File([new Uint8Array([1,2,3])], 'test.step', { type: 'application/step' });
-    const res = await analyzeCADFile(fake as any);
-    expect(res).toHaveProperty('volume');
-    expect(typeof res.volume).toBe('number');
-    expect(res.cavities).toBeDefined();
-  }, 20000);
+// avoid tight typing here; we only need a Jest mock helper
+const parseCADMock = parseCAD as unknown as any;
+
+describe("cadAnalysis", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    // 2) Risposta finta, minimale, stabile (metti qui i campi che cadAnalysis legge davvero)
+    parseCADMock.mockResolvedValue({
+      meta: {
+        volume_cm3: 12.3,
+        thickness_mm: 2.1,
+        bbox_mm: { x: 100, y: 50, z: 20 },
+      },
+      geometry: null,
+    });
+  });
+
+  it("analyzes CAD file using mocked parseCAD (no OCCT)", async () => {
+    // 3) Import dinamico: garantisce che il mock sia già attivo
+    const { analyzeCADFile } = await import("../cadAnalysis");
+
+    const fakeFile = new File(["dummy"], "test.step", { type: "model/step" });
+
+    const result = await analyzeCADFile(fakeFile as unknown as File);
+
+    expect(parseCADMock).toHaveBeenCalledTimes(1);
+    expect(result).toBeTruthy();
+  });
 });

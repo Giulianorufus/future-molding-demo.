@@ -1,4 +1,4 @@
-import { computeSurfaceArea_mm2, computeSignedVolume_mm3, computeProjectedHullArea_mm2, computeHullDiameter_mm } from "../meshMetrics"
+import { computeSurfaceArea_mm2, computeSignedVolume_mm3, computeProjectedHullArea_mm2, computeHullDiameter_mm, computeProjectedTrianglesArea_mm2 } from "../meshMetrics"
 
 describe('meshMetrics on box 100x50x2 mm', () => {
   // build box vertices

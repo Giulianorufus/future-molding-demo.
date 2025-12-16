@@ -164,16 +164,51 @@ export function calculateInjection(
   const clamp = computeClampForce({ projectedArea_cm2, cavityPressure_bar: tuned.tunedCavityPressure_bar, safetyFactor: tuned.tunedSafetyFactor });
 
   const pressClamp_t = clamp_t ?? 0;
-  const pressClamp_kN = pressClamp_t * 9.80665; // ton -> kN approx
+  // preferire valore diretto in kN se presente in press specs, altrimenti usare la tonnellata->kN
+  const pressClamp_kN = pressSpecs?.clampForce_kN ?? (pressClamp_t * 9.80665); // kN
 
-  const clampUtilization_pct =
-    pressClamp_kN > 0 ? (clamp.clampForceRequired_kN / pressClamp_kN) * 100 : 0;
+  const clampUtilization_pct = pressClamp_kN > 0 ? (clamp.clampForceRequired_kN / pressClamp_kN) * 100 : 0;
+
+  // build sources / assumptions / clamp warnings
+  const warningsClamp: string[] = [];
+  const assumptions: string[] = [];
+  const sources: any = { projectedArea: 'unknown', thickness: 'unknown', flowLength: 'unknown' };
+
+  const cadMeta = context?.cadAnalysisMeta as any | undefined;
+  const projReason: string | undefined = cadMeta?._projectedAreaReason
+  if (projReason && String(projReason).startsWith('mesh')) {
+    sources.projectedArea = 'mesh'
+  } else if (projReason === 'bbox-fallback') {
+    sources.projectedArea = 'bbox'
+    assumptions.push('Projected area from bbox fallback')
+    // when projected area is from bbox fallback it's likely thickness/flowLength are also estimated
+    assumptions.push('Thickness from bbox fallback')
+    assumptions.push('Flow length from bbox fallback')
+    sources.thickness = 'bbox'
+    sources.flowLength = 'bbox'
+  } else {
+    // best-effort: if cadMeta exists and has values mark as mesh-derived
+    if (cadMeta && (cadMeta.projectedArea_cm2 || cadMeta.thickness_mm || cadMeta.flowLength_mm)) {
+      sources.projectedArea = cadMeta.projectedArea_cm2 ? 'mesh' : 'bbox'
+      sources.thickness = cadMeta.thickness_mm ? 'mesh' : 'bbox'
+      sources.flowLength = cadMeta.flowLength_mm ? 'mesh' : 'bbox'
+    }
+  }
+
+  if (pressClamp_kN && pressClamp_kN > 0) {
+    const util = clampUtilization_pct;
+    if (util > 95) warningsClamp.push('Clamp utilization >95%: pressa sottodimensionata')
+    if (util > 85) warningsClamp.push('Clamp utilization >85%: rischio bava/instabilità')
+  }
 
   // attach clamp fields to result
   (result as any).projectedArea_cm2 = clamp.projectedArea_cm2;
   (result as any).clampForceRequired_kN = clamp.clampForceRequired_kN;
   (result as any).clampPressureRequired_g_cm2 = clamp.clampPressureRequired_g_cm2;
   (result as any).clampUtilization_pct = Math.round(clampUtilization_pct * 100) / 100;
+  (result as any).warnings = Array.from(new Set([...(result as any).errors ?? [], ...warningsClamp]));
+  (result as any).assumptions = assumptions;
+  (result as any).sources = sources;
 
   return result;
 }

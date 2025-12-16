@@ -5,7 +5,8 @@ export function buildCadAnalysisMetaFromMesh({ positions, indices, bbox_mm }: { 
   const pos = Array.isArray(positions) ? positions : Array.from(positions)
   const surface_mm2 = computeSurfaceArea_mm2(pos, indices)
   const vol_mm3 = computeSignedVolume_mm3(pos, indices)
-  const projectedTri = projectedAreaFromMesh(pos, indices, 'z')
+  const projectedTriRes = require('./projectedAreaFromMesh').projectedAreaFromMesh(pos, indices, 'z')
+  const projectedTri_mm2 = Math.round((projectedTriRes.projectedArea_cm2 * 100) * 100) / 100 // cm2->mm2
   const projectedHull_mm2 = computeProjectedHullArea_mm2(pos, 'z')
   const hullDiameter = computeHullDiameter_mm(pos, 'z')
 
@@ -21,15 +22,18 @@ export function buildCadAnalysisMetaFromMesh({ positions, indices, bbox_mm }: { 
   }
 
   const projectedAreaHull_cm2 = Math.round((projectedHull_mm2 / 100) * 100) / 100
-  const projectedAreaTri_cm2 = Math.round((projectedTri.projectedArea_cm2 / 1) * 100) / 100
-  const projectedArea_cm2 = Math.max(projectedAreaHull_cm2, projectedAreaTri_cm2)
+  const projectedAreaTriangles_cm2 = Math.round((projectedTri_mm2 / 100) * 100) / 100
+  // Stabilized area for clamp: use hull area to avoid double-counting overlapping triangles
+  const projectedArea_cm2 = projectedAreaHull_cm2
 
   return {
     volume_cm3,
     surfaceArea_mm2,
     thickness_mm,
     flowLength_mm: Math.round(hullDiameter),
+    projectedAreaTriangles_cm2,
+    projectedAreaHull_cm2,
     projectedArea_cm2,
-    projectedAreaReason: `hull:${projectedAreaHull_cm2};tri:${projectedAreaTri.reason}`,
+    projectedAreaReason: `projectedArea:hull;hull_cm2=${projectedAreaHull_cm2};tri_cm2=${projectedAreaTriangles_cm2}`,
   }
 }

@@ -147,3 +147,49 @@ export function computeHullDiameter_mm(positions: PositionsArray, axis: 'x' | 'y
   }
   return Math.sqrt(maxd)
 }
+
+export function computeProjectedTrianglesArea_mm2(positions: PositionsArray, indices?: IndicesArray, axis: 'x' | 'y' | 'z' = 'z') {
+  const pos = toArray(positions)
+  const idx = indices ? (Array.isArray(indices) ? indices : Array.from(indices)) : undefined
+  let area = 0
+  if (idx && idx.length >= 3) {
+    for (let i = 0; i + 2 < idx.length; i += 3) {
+      const i1 = idx[i] * 3
+      const i2 = idx[i + 1] * 3
+      const i3 = idx[i + 2] * 3
+      const a = get2D(pos, axis, i1 / 3)
+      const b = get2D(pos, axis, i2 / 3)
+      const c = get2D(pos, axis, i3 / 3)
+      const abx = b[0] - a[0]
+      const aby = b[1] - a[1]
+      const acx = c[0] - a[0]
+      const acy = c[1] - a[1]
+      const cross = Math.abs(abx * acy - aby * acx)
+      area += 0.5 * cross
+    }
+  } else {
+    const vertCount = Math.floor(pos.length / 3)
+    for (let i = 0; i + 2 < vertCount; i += 3) {
+      const a = get2D(pos, axis, i)
+      const b = get2D(pos, axis, i + 1)
+      const c = get2D(pos, axis, i + 2)
+      const abx = b[0] - a[0]
+      const aby = b[1] - a[1]
+      const acx = c[0] - a[0]
+      const acy = c[1] - a[1]
+      const cross = Math.abs(abx * acy - aby * acx)
+      area += 0.5 * cross
+    }
+  }
+  return area
+}
+
+function get2D(posArr: number[], axis: 'x' | 'y' | 'z', idx: number): [number, number] {
+  const base = idx * 3
+  const x = posArr[base]
+  const y = posArr[base + 1]
+  const z = posArr[base + 2]
+  if (axis === 'x') return [y, z]
+  if (axis === 'y') return [x, z]
+  return [x, y]
+}

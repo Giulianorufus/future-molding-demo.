@@ -41,4 +41,13 @@ describe('meshMetrics on box 100x50x2 mm', () => {
     const d = computeHullDiameter_mm(verts, 'z')
     expect(d).toBeCloseTo(Math.sqrt(w * w + h * h), 1)
   })
+
+  it('projected triangles area doubles when duplicated, hull stays same', () => {
+    const single = computeProjectedTrianglesArea_mm2(verts, indices, 'z')
+    const dupVerts = [...verts, ...verts]
+    const double = computeProjectedTrianglesArea_mm2(dupVerts, undefined, 'z')
+    expect(double).toBeGreaterThan(single)
+    const hull = computeProjectedHullArea_mm2(dupVerts, 'z')
+    expect(hull).toBeCloseTo(5000, 0)
+  })
 })

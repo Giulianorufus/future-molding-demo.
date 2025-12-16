@@ -13,6 +13,8 @@ import { projectedAreaFromMesh, estimateProjectedAreaFromBboxFallback } from '..
 
 export type ParametriState = {
   lastInput: CalculationInput | null
+  lastCalcInputHash?: string | null
+  lastCalcResult?: CalculationResult | null
   result: CalculationResult | null
   isCalculating: boolean
   // compatibility: a `loading` boolean selector is used by presentational UI
@@ -30,6 +32,8 @@ export type ParametriState = {
 
 export const useParametriStore = create<ParametriState>((set) => ({
   lastInput: null,
+  lastCalcInputHash: null,
+  lastCalcResult: null,
   result: null,
   isCalculating: false,
   loading: false,
@@ -39,6 +43,46 @@ export const useParametriStore = create<ParametriState>((set) => ({
     set({ isCalculating: true, loading: true, error: null })
     try {
       try { logInput?.(input) } catch (_) {}
+      // compute stable hash of the input to avoid unnecessary recalculations
+      const stableStringify = (obj: any): string => {
+        const seen = new WeakSet()
+        const normalize = (v: any): any => {
+          if (v === null || v === undefined) return v
+          if (typeof v !== 'object') return v
+          if (seen.has(v)) return undefined
+          seen.add(v)
+          if (Array.isArray(v)) return v.map(normalize)
+          const keys = Object.keys(v).sort()
+          const out: any = {}
+          for (const k of keys) out[k] = normalize(v[k])
+          return out
+        }
+        return JSON.stringify(normalize(obj))
+      }
+      // import hash helper
+      const { sha256Hex } = await import('../engine/integrity')
+      const inputStr = stableStringify(input)
+      const inputHash = await sha256Hex(inputStr)
+      // short-circuit if same hash and we have a cached result
+      try {
+        const state: any = (useParametriStore as any).getState()
+        if (state.lastCalcInputHash && state.lastCalcInputHash === inputHash && state.lastCalcResult) {
+          set({ lastInput: input, result: state.lastCalcResult, isCalculating: false, loading: false })
+          return
+        }
+        // also check localStorage cache if available
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const kHash = 'fm:lastCalcInputHash'
+          const kRes = 'fm:lastCalcResult'
+          const storedHash = window.localStorage.getItem(kHash)
+          if (storedHash === inputHash) {
+            const raw = window.localStorage.getItem(kRes)
+            if (raw) {
+              try { const parsed = JSON.parse(raw); set({ lastInput: input, result: parsed, lastCalcInputHash: inputHash, lastCalcResult: parsed, isCalculating: false, loading: false }); return } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {}
           // build context from lastDefectFix and drawing bounding box if available
           const curLastDefect = (useParametriStore as any).getState?.().lastDefectFix ?? null
           const d = useDrawingStore.getState()
@@ -84,6 +128,16 @@ export const useParametriStore = create<ParametriState>((set) => ({
           }
 
           const res = calcolaParametri(input as any, context) as CalculationResult
+          // persist hash + result in-memory and to localStorage (best-effort)
+          try {
+            ;(useParametriStore as any).setState({ lastCalcInputHash: inputHash, lastCalcResult: res })
+            if (typeof window !== 'undefined' && window.localStorage) {
+              try {
+                window.localStorage.setItem('fm:lastCalcInputHash', inputHash)
+                window.localStorage.setItem('fm:lastCalcResult', JSON.stringify(res))
+              } catch (_) {}
+            }
+          } catch (_) {}
       try { logOutput?.(res) } catch (_) {}
       set({ lastInput: input, result: res, isCalculating: false, loading: false })
     } catch (err: any) {

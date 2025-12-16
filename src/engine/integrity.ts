@@ -1,10 +1,18 @@
 // Simple integrity helper: compute SHA-256 of a string in both browser and Node
 export async function sha256Hex(input: string) {
-  if (typeof window !== 'undefined' && (window.crypto || (globalThis as any).crypto)) {
-    const enc = new TextEncoder();
-    const data = enc.encode(input);
-    const hash = await (window.crypto as any).subtle.digest('SHA-256', data);
-    return bufferToHex(hash);
+  try {
+    const hasWindow = typeof window !== 'undefined'
+    const winCrypto = hasWindow ? (window.crypto as any) : undefined
+    const globalCrypto = (globalThis as any).crypto
+    const cryptoObj = winCrypto || globalCrypto || undefined
+    if (cryptoObj && cryptoObj.subtle && typeof cryptoObj.subtle.digest === 'function') {
+      const enc = new TextEncoder();
+      const data = enc.encode(input);
+      const hash = await cryptoObj.subtle.digest('SHA-256', data);
+      return bufferToHex(hash);
+    }
+  } catch (_) {
+    // fall through to Node fallback
   }
   // Node fallback
   try {

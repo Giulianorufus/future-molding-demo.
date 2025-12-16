@@ -52,3 +52,20 @@ export function estimateProjectedAreaFromBbox_mm(bbox?: { x: number; y: number }
   const y = Math.max(0, bbox.y);
   return (x * y) / 100; // mm² -> cm²
 }
+
+export function estimateProjectedAreaFromBbox3_mm(bbox?: { x: number; y: number; z: number }): number {
+  if (!bbox) return 0;
+  const x = Math.max(0, bbox.x);
+  const y = Math.max(0, bbox.y);
+  const z = Math.max(0, bbox.z);
+
+  // asse di chiusura = dimensione minima (spessore)
+  // area proiettata = prodotto delle altre due
+  let area_mm2 = 0;
+
+  if (x <= y && x <= z) area_mm2 = y * z;
+  else if (y <= x && y <= z) area_mm2 = x * z;
+  else area_mm2 = x * y;
+
+  return area_mm2 / 100; // mm² -> cm²
+}

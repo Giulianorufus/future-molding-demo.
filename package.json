@@ -16,6 +16,7 @@
     "preview:5274": "vite preview --host 127.0.0.1 --port 5274",
     "test": "jest",
     "test:cad": "cross-env RUN_CAD_INTEGRATION=1 npm test -- src/lib/__tests__/cadAnalysis.test.ts src/lib/tests/cadOcct.integration.test.ts --runInBand",
+    "test:cad:strict": "cross-env RUN_CAD_INTEGRATION=1 CAD_STRICT=1 npm test -- src/lib/tests/cadOcct.integration.test.ts --runInBand",
     "test:all": "cross-env RUN_CAD_INTEGRATION=1 npm test",
     "build:sign": "node ./scripts/sign-calc.cjs",
     "generate:pdf": "node ./scripts/generate-specs-pdf.cjs",

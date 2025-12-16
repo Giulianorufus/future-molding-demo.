@@ -127,8 +127,22 @@ function fallbackResult(file: File, format: "step" | "iges"): CadAnalysisResult 
 
 function probeReadResult(occt: OcctModule, data: Uint8Array, isIges: boolean): any {
   const tryFns = isIges
-    ? ["readIgesFile", "ReadIgesFile", "readIGES", "ReadIGES"]
-    : ["readStepFile", "ReadStepFile", "readSTEP", "ReadSTEP"];
+    ? [
+        "readIgesFile",
+        "ReadIgesFile",
+        "readIGESFile",
+        "ReadIGESFile",
+        "readIGES",
+        "ReadIGES",
+      ]
+    : [
+        "readStepFile",
+        "ReadStepFile",
+        "ReadSTEPFile",
+        "readSTEPFile",
+        "readSTEP",
+        "ReadSTEP",
+      ];
 
   for (const name of tryFns) {
     // @ts-ignore

@@ -1,16 +1,5 @@
 // src/lib/normalizeOutput.ts
-
-export type AppliedCorrection = {
-  type?: string;
-  target?: string;
-  // opzionali (non imponiamo schema rigido)
-  value?: number;
-  delta?: number;
-  unit?: string;
-  reason?: string;
-  source?: string;
-  [k: string]: unknown;
-};
+import type { AppliedCorrection } from "../types/appliedCorrection";
 
 export function normalizeStringArray(arr?: string[] | null): string[] {
   if (!arr || arr.length === 0) return [];
@@ -22,50 +11,48 @@ export function normalizeStringArray(arr?: string[] | null): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
-function correctionKey(c: AppliedCorrection): string {
-  const type = (c.type ?? "").toString().trim().toLowerCase();
-  const target = (c.target ?? "").toString().trim().toLowerCase();
+function correctionKey(c: Partial<AppliedCorrection>): string {
+  const id = (c.id ?? "").toString().trim().toLowerCase();
+  if (id) return id;
 
-  if (type && target) return `${type}:${target}`;
-
-  // fallback deterministico: usa solo un sottoinsieme stabile
-  const v =
-    typeof c.value === "number" ? c.value :
-    typeof c.delta === "number" ? c.delta :
-    "";
-  const u = (c.unit ?? "").toString().trim().toLowerCase();
-  const r = (c.reason ?? "").toString().trim().toLowerCase();
-
-  return `${type || "unknown"}:${target || "unknown"}:${v}:${u}:${r}`;
+  const type = (c.type ?? "unknown").toString().trim().toLowerCase();
+  const target = (c.target ?? "unknown").toString().trim().toLowerCase();
+  return `${type}:${target}`;
 }
 
-export function normalizeCorrections(arr?: (AppliedCorrection | string)[] | null): (AppliedCorrection | string)[] {
+export function normalizeCorrections(arr?: Array<Partial<AppliedCorrection> | string> | null): AppliedCorrection[] {
   if (!arr || arr.length === 0) return [];
-
-  // Separate string entries (legacy plain messages) and structured corrections
-  const stringSet = new Set<string>();
-  const map = new Map<string, AppliedCorrection>();
+  const map = new Map<string, Partial<AppliedCorrection>>();
 
   for (const raw of arr) {
-    if (typeof raw === 'string') {
-      const v = raw.toString().trim();
-      if (v) stringSet.add(v);
-      continue;
-    }
-    if (!raw || typeof raw !== "object") continue;
-    const c = raw as AppliedCorrection;
-    const key = correctionKey(c);
-    map.set(key, c);
+    if (!raw || (typeof raw !== 'object' && typeof raw !== 'string')) continue;
+    if (typeof raw === 'string') continue; // we drop legacy strings in new schema
+    const key = correctionKey(raw as Partial<AppliedCorrection>);
+    map.set(key, raw as Partial<AppliedCorrection>); // last wins
   }
 
-  const structured = Array.from(map.entries())
+  return Array.from(map.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([, c]) => c as AppliedCorrection);
+    .map(([, c]) => {
+      const type = (c.type ?? 'estimate') as AppliedCorrection['type'];
+      const target = (c.target ?? 'unknown').toString();
+      const id = (c.id ?? `${String(type)}:${target}`).toString();
+      const action = (c.action ?? 'set') as AppliedCorrection['action'];
 
-  const strings = Array.from(stringSet).sort((a, b) => a.localeCompare(b));
-
-  // merge: structured entries first (stable), then legacy strings
-  return [...structured, ...strings];
+      return {
+        id,
+        type,
+        target,
+        action,
+        unit: typeof c.unit === 'string' ? c.unit : undefined,
+        before: typeof c.before === 'number' ? c.before : undefined,
+        after: typeof c.after === 'number' ? c.after : undefined,
+        delta: typeof c.delta === 'number' ? c.delta : undefined,
+        reason: typeof c.reason === 'string' ? c.reason : undefined,
+        source: typeof c.source === 'string' ? c.source : undefined,
+        meta: typeof c.meta === 'object' && c.meta ? (c.meta as Record<string, unknown>) : undefined,
+      } as AppliedCorrection;
+    });
 }
 
 export default { normalizeCorrections, normalizeStringArray };

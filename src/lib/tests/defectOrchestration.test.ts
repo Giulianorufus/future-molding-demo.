@@ -12,14 +12,14 @@ describe('Defect orchestration (service-level)', () => {
       defectId: 'flash',
       severity: 'high',
       appliedCorrections: [
-        { field: 'packing.pressure', old: 30, new: 20, reason: 'defect:flash' }
+        { id: 'defect:flash:packing.pressure', type: 'defect', target: 'packing.pressure', action: 'decrease', before: 30, after: 20, delta: -10, reason: 'defect:flash', source: 'test' }
       ]
     }
 
     const res = calculateInjection(params as any, marca as any, modello, material as any, context)
     expect(res).toBeTruthy()
     expect(Array.isArray(res.appliedCorrections)).toBe(true)
-    const found = res.appliedCorrections.find((c: any) => c && c.reason === 'defect:flash')
+    const found = res.appliedCorrections.find((c: any) => c && c.id === 'defect:flash:packing.pressure')
     expect(found).toBeTruthy()
   })
 
@@ -52,7 +52,7 @@ describe('Defect orchestration (service-level)', () => {
     expect(res).toBeTruthy()
     // mitigation should add appliedCorrections and warnings mentioning Auto-correction
     expect(Array.isArray(res.appliedCorrections)).toBe(true)
-    const hasMitigation = (res.appliedCorrections || []).some((s: any) => String(s).includes('pack_bar') || String(s).includes('injectionPressure_bar'))
+    const hasMitigation = (res.appliedCorrections || []).some((c: any) => (c && c.target && (String(c.target).includes('pack_bar') || String(c.target).includes('injectionPressure_bar'))))
     expect(hasMitigation).toBe(true)
     const hasWarning = (res.warnings || []).some((w: string) => String(w).includes('Auto-correction') || String(w).includes('Auto-correction:'))
     expect(hasWarning).toBe(true)

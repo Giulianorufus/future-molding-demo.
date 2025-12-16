@@ -212,7 +212,21 @@ if (typeof window !== 'undefined') {
             const oldV = read(baseInput as any, p)
             const newV = read(patched as any, p)
             if (oldV !== undefined && newV !== undefined && oldV !== newV) {
-              corrections.push({ field: p.join('.'), old: oldV, new: newV, reason: `defect:${defectId}` })
+              const field = p.join('.')
+              const before = typeof oldV === 'number' ? oldV : undefined
+              const after = typeof newV === 'number' ? newV : undefined
+              const delta = typeof before === 'number' && typeof after === 'number' ? (after - before) : (typeof newV === 'number' && typeof oldV !== 'number' ? newV : undefined)
+              corrections.push({
+                id: `defect:${defectId}:${field}`,
+                type: 'defect',
+                target: field,
+                action: typeof delta === 'number' ? (delta < 0 ? 'decrease' : (delta > 0 ? 'increase' : 'set')) : 'set',
+                before,
+                after,
+                delta: typeof delta === 'number' ? delta : undefined,
+                reason: `defect=${defectId}`,
+                source: 'defectRules',
+              })
             }
           }
         } catch (_) {

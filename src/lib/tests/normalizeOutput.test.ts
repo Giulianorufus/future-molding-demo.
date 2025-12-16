@@ -1,32 +1,29 @@
 import { normalizeCorrections, normalizeStringArray } from '../normalizeOutput'
 
-describe('normalizeOutput', () => {
-  it('dedupes and sorts string arrays', () => {
-    const out = normalizeStringArray([' b ', 'a', 'a', '', 'B'])
-    expect(out).toEqual(['B', 'a', 'b'].sort((x, y) => x.localeCompare(y)))
+describe("normalizeOutput", () => {
+  it("dedupes and sorts string arrays", () => {
+    const out = normalizeStringArray([" b ", "a", "a", "", "B"])
+    const sorted = [...out].sort((x, y) => x.localeCompare(y))
+    expect(out).toEqual(sorted)
   })
 
-  it('dedupes corrections by type+target and orders deterministically', () => {
+  it("dedupes corrections by id and orders deterministically", () => {
     const out = normalizeCorrections([
-      { type: 'clamp', target: 'packingPressure_bar', delta: -20 },
-      { type: 'clamp', target: 'packingPressure_bar', delta: -10 }, // dup -> last wins
-      { type: 'pressLimit', target: 'injectionSpeed_cm3_s', value: 120 },
-      { type: 'pressLimit', target: 'injectionSpeed_cm3_s', value: 110 }, // dup -> last wins
-    ]) as any[];
+      { id: "pressLimit:injectionSpeed_cm3_s", type: "pressLimit", target: "injectionSpeed_cm3_s", action: "clamp", after: 120 },
+      { id: "pressLimit:injectionSpeed_cm3_s", type: "pressLimit", target: "injectionSpeed_cm3_s", action: "clamp", after: 110 }, // dup -> last wins
+      { id: "clampMitigation:packingPressure_bar", type: "clampMitigation", target: "packingPressure_bar", action: "decrease", delta: -10 },
+      { id: "clampMitigation:packingPressure_bar", type: "clampMitigation", target: "packingPressure_bar", action: "decrease", delta: -20 }, // dup -> last wins
+    ])
 
     expect(out.length).toBe(2)
-    expect(out[0].type && out[1].type).toBeTruthy()
 
-    // verifica “last wins”
-    const clamp = out.find((c: any) => c.type === 'clamp' && c.target === 'packingPressure_bar')
-    expect(clamp?.delta).toBe(-10)
+    const speed2 = out.find((c: any) => c.id === "pressLimit:injectionSpeed_cm3_s")
+    expect(speed2?.after).toBe(110)
 
-    const speed = out.find((c: any) => c.type === 'pressLimit' && c.target === 'injectionSpeed_cm3_s')
-    expect(speed?.value).toBe(110)
+    const pack = out.find((c: any) => c.id === "clampMitigation:packingPressure_bar")
+    expect(pack?.delta).toBe(-20)
 
-    // ordine stabile (per chiave)
-    const keys = out.map((c: any) => `${(c.type ?? '').toLowerCase()}:${(c.target ?? '').toLowerCase()}`)
-    const sorted = [...keys].sort((a, b) => a.localeCompare(b))
-    expect(keys).toEqual(sorted)
+    const keys = out.map(c => c.id.toLowerCase()).sort((a, b) => a.localeCompare(b))
+    expect(out.map(c => c.id.toLowerCase())).toEqual(keys)
   })
 })

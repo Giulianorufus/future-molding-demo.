@@ -1,7 +1,9 @@
+import type { AppliedCorrection } from '../types/appliedCorrection'
+
 type MitigateResult = {
   result: any
   warningsAdded: string[]
-  appliedCorrections: string[]
+  appliedCorrections: AppliedCorrection[]
 }
 
 /**
@@ -17,7 +19,7 @@ type MitigateResult = {
  */
 export function mitigateClampOverload(result: any, context?: any, pressSpecs?: any): MitigateResult {
   const warnings: string[] = []
-  const applied: string[] = []
+  const applied: AppliedCorrection[] = []
 
   const util = Number(result?.clampUtilization_pct ?? 0)
   if (!Number.isFinite(util) || util <= 85) return { result, warningsAdded: [], appliedCorrections: [] }
@@ -38,15 +40,37 @@ export function mitigateClampOverload(result: any, context?: any, pressSpecs?: a
     const injPct = Math.max(5, Math.round(packPct / 2))
 
     if (typeof result.pack_bar === 'number' && result.pack_bar > 0) {
-      const old = result.pack_bar
+      const before = result.pack_bar
       result.pack_bar = Math.max(0, Math.round(result.pack_bar * (1 - packPct / 100)))
-      applied.push(`pack_bar:${old}->${result.pack_bar}`)
+      applied.push({
+        id: `clampMitigation:pack_bar`,
+        type: 'clampMitigation',
+        target: 'pack_bar',
+        action: result.pack_bar < before ? 'decrease' : 'set',
+        before,
+        after: result.pack_bar,
+        delta: (result.pack_bar - before),
+        unit: 'bar',
+        reason: 'reduce clamp overload',
+        source: 'clampOverloadMitigation',
+      })
     }
 
     if (typeof result.injectionPressure_bar === 'number' && result.injectionPressure_bar > 0) {
-      const old2 = result.injectionPressure_bar
+      const before2 = result.injectionPressure_bar
       result.injectionPressure_bar = Math.max(0, Math.round(result.injectionPressure_bar * (1 - injPct / 100)))
-      applied.push(`injectionPressure_bar:${old2}->${result.injectionPressure_bar}`)
+      applied.push({
+        id: `clampMitigation:injectionPressure_bar`,
+        type: 'clampMitigation',
+        target: 'injectionPressure_bar',
+        action: result.injectionPressure_bar < before2 ? 'decrease' : 'set',
+        before: before2,
+        after: result.injectionPressure_bar,
+        delta: (result.injectionPressure_bar - before2),
+        unit: 'bar',
+        reason: 'reduce clamp overload',
+        source: 'clampOverloadMitigation',
+      })
     }
 
     warnings.push('Auto-correction: reduced packing/injection pressure to lower clamp demand')

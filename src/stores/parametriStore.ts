@@ -241,18 +241,6 @@ if (typeof window !== 'undefined') {
       let finalInput = baseInput as any
       if (defectId) {
         const fix = applyDefectFix(defectId, severity)
-        try {
-          ;(useParametriStore as any).setState({
-            lastDefectFix: {
-              defectId,
-              severity,
-              delta: fix.delta ?? undefined,
-              notes: fix.notes,
-            },
-          })
-        } catch (_) {
-          // best-effort: do not throw if setState isn't available in some test envs
-        }
         const patched = applyDefectDeltaToInput(baseInput, fix.delta)
         // derive structured appliedCorrections by comparing baseInput -> patched
         const corrections: any[] = []
@@ -289,7 +277,22 @@ if (typeof window !== 'undefined') {
         finalInput = patched
         try {
           const normalized = normalizeCorrections(corrections)
-          ;(useParametriStore as any).setState({ lastDefectFix: { defectId, severity, delta: fix.delta ?? undefined, notes: fix.notes, appliedCorrections: normalized } })
+          // set lastDefectFix only if it changed (idempotent)
+          try {
+            const prev: any = (useParametriStore as any).getState?.().lastDefectFix ?? null
+            const prevStr = prev ? JSON.stringify(prev) : null
+            const next = { defectId, severity, delta: fix.delta ?? undefined, notes: fix.notes, appliedCorrections: normalized }
+            const nextStr = JSON.stringify(next)
+            if (prevStr !== nextStr) {
+              ;(useParametriStore as any).setState({ lastDefectFix: next })
+              // persist best-effort
+              if (typeof window !== 'undefined' && window.localStorage) {
+                try { window.localStorage.setItem('fm:lastDefectFix', JSON.stringify(next)) } catch (_) {}
+              }
+            }
+          } catch (_) {
+            ;(useParametriStore as any).setState({ lastDefectFix: { defectId, severity, delta: fix.delta ?? undefined, notes: fix.notes, appliedCorrections: normalized } })
+          }
         } catch (_) {}
       }
 

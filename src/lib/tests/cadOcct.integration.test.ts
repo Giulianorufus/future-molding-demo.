@@ -15,39 +15,22 @@ describeCad("occt-import-js (real integration)", () => {
     const path = await import("node:path");
 
     const stepPath = path.join(__dirname, "fixtures", "cad", "box_20mm.step");
-    const stlPath = path.join(__dirname, "fixtures", "cad", "box_20mm.stl");
 
-    // prefer STEP if real, otherwise fallback to STL fixture we ship
-    let fixtureBuf = null as null | Buffer;
-    try { fixtureBuf = await fs.readFile(stepPath); } catch (_) { /* missing STEP */ }
-    if (!fixtureBuf || fixtureBuf.byteLength < 2000) {
-      // fallback to STL fixture
-      fixtureBuf = await fs.readFile(stlPath);
-      // mark as STL
-      const uint8 = new Uint8Array(fixtureBuf.buffer, fixtureBuf.byteOffset, fixtureBuf.byteLength);
-      const fileLike = {
-        name: "box_20mm.stl",
-        size: uint8.byteLength,
-        type: "model/stl",
-        arrayBuffer: async () => uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength),
-      } as unknown as File;
-      var out = await parseCAD(fileLike as unknown as File);
-    } else {
-      const uint8 = new Uint8Array(fixtureBuf.buffer, fixtureBuf.byteOffset, fixtureBuf.byteLength);
-      const fileLike = {
-        name: "box_20mm.step",
-        size: uint8.byteLength,
-        type: "model/step",
-        arrayBuffer: async () => uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength),
-      } as unknown as File;
-      var out = await parseCAD(fileLike as unknown as File);
-    }
+    // Use the STEP fixture (we require a real STEP for strict integration runs)
+    const fixtureBuf = await fs.readFile(stepPath);
+    const uint8 = new Uint8Array(fixtureBuf.buffer, fixtureBuf.byteOffset, fixtureBuf.byteLength);
+    const fileLike = {
+      name: "box_20mm.step",
+      size: uint8.byteLength,
+      type: "model/step",
+      arrayBuffer: async () => uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength),
+    } as unknown as File;
+    const out = await parseCAD(fileLike as unknown as File);
 
     expect(out).toBeTruthy();
     expect(Array.isArray(out.features)).toBe(true);
-    // Determine whether we used a real fixture (STEP present+large or STL present)
-    const usedStep = !!fixtureBuf && fixtureBuf.byteLength >= 2000;
-    const usedStl = !usedStep; // if we fell back, we used STL fixture we ship
+    // We used the STEP fixture for this integration test
+    const usedStep = true;
 
     // Check whether OCCT actually exposes a reader for the chosen format; if not, treat as non-real (skip strict)
     let occtHasReader = false;
@@ -67,19 +50,12 @@ describeCad("occt-import-js (real integration)", () => {
           occt.ReadSTEP ||
           occt.readSTEP
         );
-      } else if (usedStl) {
-        occtHasReader = !!(
-          occt.ReadStlFile ||
-          occt.readStlFile ||
-          occt.ReadSTLFile ||
-          occt.readSTLFile
-        );
       }
     } catch (_) {
       occtHasReader = false;
     }
 
-    const realFixture = (usedStep || usedStl) && occtHasReader;
+    const realFixture = usedStep && occtHasReader;
 
     // If OCCT returned the fail-soft marker and we have a real fixture, FAIL hard.
     if ((out.features || []).includes("occt-unavailable")) {

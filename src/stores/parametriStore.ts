@@ -6,6 +6,7 @@ import { usePressStore } from './pressStore'
 import { useMaterialStore } from './materialStore'
 import { useDefectsStore } from './defectsStore'
 import { applyDefectFix, type DefectSeverity } from '../defects/defectRules'
+import { normalizeCorrections } from '../lib/normalizeOutput'
 import { mapLegacyDefectId, mapLegacySeverity } from '../defects/defectAdapter'
 import { estimateThicknessFromBbox, estimateFlowLengthFromBbox } from '../lib/cadMetaEstimate'
 import { projectedAreaFromMesh, estimateProjectedAreaFromBboxFallback } from '../lib/projectedAreaFromMesh'
@@ -219,7 +220,8 @@ if (typeof window !== 'undefined') {
         }
         finalInput = patched
         try {
-          ;(useParametriStore as any).setState({ lastDefectFix: { defectId, severity, delta: fix.delta ?? undefined, notes: fix.notes, appliedCorrections: corrections } })
+          const normalized = normalizeCorrections(corrections)
+          ;(useParametriStore as any).setState({ lastDefectFix: { defectId, severity, delta: fix.delta ?? undefined, notes: fix.notes, appliedCorrections: normalized } })
         } catch (_) {}
       }
 

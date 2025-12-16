@@ -8,6 +8,7 @@ import type { CadAnalysisMeta } from "../types/cadAnalysisMeta";
 import { applyPressLimits } from '../lib/pressLimits'
 import { mitigateClampOverload } from '../lib/clampOverloadMitigation'
 import { computeClampCapacity } from '../lib/clampCapacity'
+import { normalizeCorrections, normalizeStringArray } from '../lib/normalizeOutput'
 
 export type CalcContext = {
   defectId?: string | null;
@@ -267,5 +268,17 @@ export function calculateInjection(
     ;(result as any).appliedCorrections = (result as any).appliedCorrections ?? []
     ;(result as any).appliedCorrections.push(...context.appliedCorrections)
   }
-  return result;
+
+  // Normalize outputs (dedupe + stable ordering)
+  const warningsNorm = normalizeStringArray((result as any).warnings ?? [])
+  const assumptionsNorm = normalizeStringArray((result as any).assumptions ?? [])
+  const appliedCorrectionsNorm = normalizeCorrections((result as any).appliedCorrections ?? [])
+
+  // leave `sources` untouched (object)
+  return {
+    ...result,
+    warnings: warningsNorm,
+    assumptions: assumptionsNorm,
+    appliedCorrections: appliedCorrectionsNorm,
+  }
 }

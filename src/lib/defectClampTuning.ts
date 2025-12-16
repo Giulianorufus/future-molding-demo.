@@ -71,7 +71,7 @@ export function tuneClampForDefect(input: DefectClampTuningInput): DefectClampTu
   // - Short shot / burn: clamp non risolve: non toccare (eviti di “sparare” tonnellaggio a caso)
   if (isFlash) {
     dSF = 0.10 * mult;          // +0.035 .. +0.10
-    dP = 30 * mult;             // +10 .. +30 bar
+    dP = 50 * mult;             // +17.5 .. +50 bar (more impactful for high severity)
     reason = "flash: increase clamp SF and slight cavity pressure";
   } else if (isOverpack) {
     dSF = 0.06 * mult;

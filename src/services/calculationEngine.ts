@@ -7,6 +7,7 @@ import { estimateCavityPressure } from "../lib/cavityPressureEstimate";
 import type { CadAnalysisMeta } from "../types/cadAnalysisMeta";
 import { applyPressLimits } from '../lib/pressLimits'
 import { mitigateClampOverload } from '../lib/clampOverloadMitigation'
+import { computeClampCapacity } from '../lib/clampCapacity'
 
 export type CalcContext = {
   defectId?: string | null;
@@ -165,11 +166,18 @@ export function calculateInjection(
 
   const clamp = computeClampForce({ projectedArea_cm2, cavityPressure_bar: tuned.tunedCavityPressure_bar, safetyFactor: tuned.tunedSafetyFactor });
 
+
   const pressClamp_t = clamp_t ?? 0;
   // preferire valore diretto in kN se presente in press specs, altrimenti usare la tonnellata->kN
   const pressClamp_kN = pressSpecs?.clampForce_kN ?? (pressClamp_t * 9.80665); // kN
 
-  const clampUtilization_pct = pressClamp_kN > 0 ? (clamp.clampForceRequired_kN / pressClamp_kN) * 100 : 0;
+  // compute clamp capacity (available + usable margin)
+  const capacity = computeClampCapacity(pressSpecs as any, { tonnellaggio: pressClamp_kN })
+  const clampForceAvailable_kN = capacity.clampForceAvailable_kN || 0
+  const usableClampForce_kN = capacity.usableClampForce_kN || 0
+
+  // Utilization should be computed against usable clamp force (operational margin)
+  const clampUtilization_pct = usableClampForce_kN > 0 ? (clamp.clampForceRequired_kN / usableClampForce_kN) * 100 : 0;
 
   // build sources / assumptions / clamp warnings
   const warningsClamp: string[] = [];
@@ -197,7 +205,12 @@ export function calculateInjection(
     }
   }
 
-  if (pressClamp_kN && pressClamp_kN > 0) {
+  // build warnings comparing required clamp to usable and available
+  if (clamp.clampForceRequired_kN > clampForceAvailable_kN && clampForceAvailable_kN > 0) {
+    warningsClamp.push('Clamp utilization >100% of available clamp force: impossibile fisicamente')
+  } else if (clamp.clampForceRequired_kN > usableClampForce_kN && usableClampForce_kN > 0) {
+    warningsClamp.push('Clamp utilization >100% of usable clamp force: fuori finestra operativa')
+  } else {
     const util = clampUtilization_pct;
     if (util > 95) warningsClamp.push('Clamp utilization >95%: pressa sottodimensionata')
     if (util > 85) warningsClamp.push('Clamp utilization >85%: rischio bava/instabilità')
@@ -208,6 +221,11 @@ export function calculateInjection(
   (result as any).clampForceRequired_kN = clamp.clampForceRequired_kN;
   (result as any).clampPressureRequired_g_cm2 = clamp.clampPressureRequired_g_cm2;
   (result as any).clampUtilization_pct = Math.round(clampUtilization_pct * 100) / 100;
+  (result as any).clampForceAvailable_kN = clampForceAvailable_kN;
+  (result as any).usableClampForce_kN = usableClampForce_kN;
+  if (capacity.assumption) {
+    try { assumptions.push(String(capacity.assumption)) } catch (_) { /* ignore */ }
+  }
   (result as any).warnings = Array.from(new Set([...(result as any).errors ?? [], ...warningsClamp]));
   (result as any).assumptions = assumptions;
   (result as any).sources = sources;

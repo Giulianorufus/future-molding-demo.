@@ -17,18 +17,22 @@ describe('clamp guardrails', () => {
   test('utilization and >85 warning', () => {
     const res = calculateInjection(baseParams, 'Arburg', '320C', null, { cadAnalysisMeta: { projectedArea_cm2: 140, _projectedAreaReason: 'bbox-fallback', thickness_mm: 2, flowLength_mm: 10 } } as any)
     expect(res.clampForceRequired_kN).toBeCloseTo(720, 2)
-    expect(res.clampUtilization_pct).toBeCloseTo(90, 1)
-    expect(res.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/>85/)]))
+    // with nominal 800 kN and usable 85% -> usable = 680 kN; utilization = 720/680 ~105.9%
+    expect(res.clampForceAvailable_kN).toBeCloseTo(800, 1)
+    expect(res.usableClampForce_kN).toBeCloseTo(680, 1)
+    expect(res.clampUtilization_pct).toBeGreaterThan(100)
+    expect(res.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/fuori finestra operativa|>100%/i)]))
   })
 
   test('>95 warning triggers', () => {
     // remock computeClampForce to return a higher required clamp (e.g. 770 kN -> 96.25% of 800)
     const mod = require('../../lib/clampForce')
-    mod.computeClampForce.mockImplementation(() => ({ projectedArea_cm2: 140, clampForceRequired_kN: 770, clampPressureRequired_g_cm2: 0 }))
+    mod.computeClampForce.mockImplementation(() => ({ projectedArea_cm2: 140, clampForceRequired_kN: 820, clampPressureRequired_g_cm2: 0 }))
 
+    // now required > available (820 > 800) -> impossibile fisicamente
     const res = calculateInjection(baseParams, 'Arburg', '320C', null, { cadAnalysisMeta: { projectedArea_cm2: 140, _projectedAreaReason: 'bbox-fallback', thickness_mm: 2, flowLength_mm: 10 } } as any)
-    expect(res.clampUtilization_pct).toBeGreaterThan(95)
-    expect(res.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/>95/)]))
+    expect(res.clampUtilization_pct).toBeGreaterThan(100)
+    expect(res.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/impossibile fisicamente|>100%/i)]))
   })
 
   test('assumptions and sources when bbox fallback', () => {

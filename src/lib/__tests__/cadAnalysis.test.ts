@@ -1,3 +1,15 @@
+// Mock low-level CAD parser to avoid initializing OCCT/WASM in unit tests
+jest.mock('../cadParser', () => ({
+  parseCAD: jest.fn(async () => ({
+    // shape expected by analyzeCADFile
+    volume_cm3: 12,
+    area_cm2: 34,
+    thickness_mm: 2,
+    meshes: [],
+    features: [],
+  })),
+}));
+
 import { analyzeCADFile } from '../cadAnalysis';
 
 describe('cadAnalysis fallback behavior', () => {

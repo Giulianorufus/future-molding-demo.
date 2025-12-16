@@ -55,3 +55,44 @@ Licenza
 9. Se difetto → pagina Difetti
 10. DefectAI → ricalcolo automatico
 11. Fine.
+
+## CAD tests (OCCT integration)
+
+The CAD pipeline uses `occt-import-js` via WASM. There are two modes:
+
+### Standard unit tests
+Runs without OCCT integration.
+
+```bash
+npm test
+```
+
+CAD integration tests (gated)
+
+Enable CAD integration tests by setting RUN_CAD_INTEGRATION=1.
+
+```bash
+npm run test:cad
+```
+
+CAD integration strict (CI / regression)
+
+Strict mode fails if OCCT parsing returns the fail-soft marker features: ["occt-unavailable"].
+
+```bash
+npm run test:cad:strict
+```
+
+Fixture
+
+The strict integration test requires a valid STEP fixture:
+
+src/lib/tests/fixtures/cad/box_20mm.step
+
+If the fixture is missing or invalid, `test:cad:strict` will fail.
+
+Notes
+
+The OCCT build used in this project exposes readers like ReadStepFile / ReadIgesFile.
+
+STL reader is not guaranteed (many builds do not expose ReadStlFile), therefore the integration test uses STEP only.

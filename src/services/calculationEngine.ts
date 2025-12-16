@@ -1,6 +1,7 @@
 // Legacy appStore types removed; keep this service self-contained
 import { findMaterialById, type IMaterial, type Brand, findPressModel } from '../fm-core';
 import { getPressSpecs } from '../lib/pressData';
+import { computeClampForce, estimateProjectedAreaFromBbox_mm } from "../lib/clampForce";
 
 export function calculateInjection(
   params: { spessore: number; volumeCavita: number; volumeMaterozza: number; cushion: number },
@@ -120,5 +121,30 @@ export function calculateInjection(
   // add shrinkage as non-typed field to avoid modifying shared interfaces
   (result as any).shrinkage_percent = Math.round(shrinkage * 100) / 100;
   if (warnings.length) (result as any).errors = warnings;
+
+  // --- Clamp force estimate (added) ---
+  const projectedArea_cm2 = estimatedProjectedArea_cm2;
+
+  const cavityPressure_bar =
+    (result as any)?.pack_bar ?? (result as any)?.injectionPressure_bar ?? 450;
+
+  const clamp = computeClampForce({
+    projectedArea_cm2,
+    cavityPressure_bar,
+    safetyFactor: 1.15,
+  });
+
+  const pressClamp_t = clamp_t ?? 0;
+  const pressClamp_kN = pressClamp_t * 9.80665; // ton -> kN approx
+
+  const clampUtilization_pct =
+    pressClamp_kN > 0 ? (clamp.clampForceRequired_kN / pressClamp_kN) * 100 : 0;
+
+  // attach clamp fields to result
+  (result as any).projectedArea_cm2 = clamp.projectedArea_cm2;
+  (result as any).clampForceRequired_kN = clamp.clampForceRequired_kN;
+  (result as any).clampPressureRequired_g_cm2 = clamp.clampPressureRequired_g_cm2;
+  (result as any).clampUtilization_pct = Math.round(clampUtilization_pct * 100) / 100;
+
   return result;
 }

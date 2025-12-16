@@ -6,6 +6,7 @@ import { tuneClampForDefect } from "../lib/defectClampTuning";
 import { estimateCavityPressure } from "../lib/cavityPressureEstimate";
 import type { CadAnalysisMeta } from "../types/cadAnalysisMeta";
 import { applyPressLimits } from '../lib/pressLimits'
+import { mitigateClampOverload } from '../lib/clampOverloadMitigation'
 
 export type CalcContext = {
   defectId?: string | null;
@@ -217,14 +218,29 @@ export function calculateInjection(
     const added = pressLimitsRes.warningsAdded || []
     const clampedFields = pressLimitsRes.clampedFields || []
     if (added.length) {
-      (result as any).warnings = Array.from(new Set([...(result as any).warnings ?? [], ...added]))
+      (result as any).warnings = Array.from(new Set([...(result as any).warnings ?? [], ...added]));
     }
     if (clampedFields.length) {
-      (result as any).assumptions = Array.from(new Set([...(result as any).assumptions ?? [], 'Applied press limits clamp']))
-      ;(result as any).sources = { ...(result as any).sources ?? {}, clampApplied: true }
+      (result as any).assumptions = Array.from(new Set([...(result as any).assumptions ?? [], 'Applied press limits clamp']));
+      ;(result as any).sources = { ...(result as any).sources ?? {}, clampApplied: true };
     }
   } catch (e) {
     // best-effort: do not break calculation flow
+  }
+
+  // --- Mitigate clamp overload by reducing pack/injection pressure when utilization is critical ---
+  try {
+    const mitigation = mitigateClampOverload(result, { defectId, severity }, pressSpecs)
+    if (mitigation.warningsAdded && mitigation.warningsAdded.length) {
+      (result as any).warnings = Array.from(new Set([...(result as any).warnings ?? [], ...mitigation.warningsAdded]));
+    }
+    if (mitigation.appliedCorrections && mitigation.appliedCorrections.length) {
+      (result as any).assumptions = Array.from(new Set([...(result as any).assumptions ?? [], 'Applied clamp overload mitigation']));
+      (result as any).appliedCorrections = (result as any).appliedCorrections ?? [];
+      (result as any).appliedCorrections.push(...mitigation.appliedCorrections);
+    }
+  } catch (e) {
+    // swallow
   }
 
   return result;

@@ -13,6 +13,8 @@ export type CalcContext = {
   defectId?: string | null;
   severity?: "low" | "medium" | "high" | string | null;
   cadAnalysisMeta?: CadAnalysisMeta | null;
+  // optional structured corrections applied earlier in the pipeline
+  appliedCorrections?: any[] | null;
 };
 
 export function calculateInjection(
@@ -254,12 +256,16 @@ export function calculateInjection(
     }
     if (mitigation.appliedCorrections && mitigation.appliedCorrections.length) {
       (result as any).assumptions = Array.from(new Set([...(result as any).assumptions ?? [], 'Applied clamp overload mitigation']));
-      (result as any).appliedCorrections = (result as any).appliedCorrections ?? [];
-      (result as any).appliedCorrections.push(...mitigation.appliedCorrections);
+      ;(result as any).appliedCorrections = (result as any).appliedCorrections ?? [];
+      ;(result as any).appliedCorrections.push(...mitigation.appliedCorrections);
     }
   } catch (e) {
     // swallow
   }
-
+  // include any defect-applied corrections passed in the context
+  if (context?.appliedCorrections && Array.isArray(context.appliedCorrections) && context.appliedCorrections.length) {
+    ;(result as any).appliedCorrections = (result as any).appliedCorrections ?? []
+    ;(result as any).appliedCorrections.push(...context.appliedCorrections)
+  }
   return result;
 }

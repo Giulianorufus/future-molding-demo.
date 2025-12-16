@@ -73,10 +73,13 @@ export const useParametriStore = create<ParametriState>((set) => ({
               _projectedAreaReason: fallbackArea.reason,
             }
           }
+          // include any appliedCorrections from the latest lastDefectFix state
+          const latestDefect = (useParametriStore as any).getState?.().lastDefectFix ?? null
           const context: any = {
-            defectId: curLastDefect?.defectId ?? null,
-            severity: curLastDefect?.severity ?? null,
+            defectId: latestDefect?.defectId ?? null,
+            severity: latestDefect?.severity ?? null,
             cadAnalysisMeta,
+            appliedCorrections: latestDefect?.appliedCorrections ?? undefined,
           }
 
           const res = calcolaParametri(input as any, context) as CalculationResult
@@ -195,7 +198,29 @@ if (typeof window !== 'undefined') {
         } catch (_) {
           // best-effort: do not throw if setState isn't available in some test envs
         }
-        finalInput = applyDefectDeltaToInput(baseInput, fix.delta)
+        const patched = applyDefectDeltaToInput(baseInput, fix.delta)
+        // derive structured appliedCorrections by comparing baseInput -> patched
+        const corrections: any[] = []
+        try {
+          const read = (obj: any, path: string[]) => path.reduce((a, p) => (a && a[p] !== undefined ? a[p] : undefined), obj)
+          const candidates: string[][] = [
+            ['injection','speed'], ['injection','pressure'], ['injection','switchover'],
+            ['packing','pressure'], ['packing','time'], ['temps','melt'], ['temps','mold'], ['plasticizing','backPressure']
+          ]
+          for (const p of candidates) {
+            const oldV = read(baseInput as any, p)
+            const newV = read(patched as any, p)
+            if (oldV !== undefined && newV !== undefined && oldV !== newV) {
+              corrections.push({ field: p.join('.'), old: oldV, new: newV, reason: `defect:${defectId}` })
+            }
+          }
+        } catch (_) {
+          // ignore
+        }
+        finalInput = patched
+        try {
+          ;(useParametriStore as any).setState({ lastDefectFix: { defectId, severity, delta: fix.delta ?? undefined, notes: fix.notes, appliedCorrections: corrections } })
+        } catch (_) {}
       }
 
       return finalInput as CalculationInput

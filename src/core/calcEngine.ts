@@ -25,6 +25,12 @@ export type CalculationResult = {
   cooling: { suggestedC: number }
 }
 
+export type CalcContext = {
+  defectId?: string | null
+  severity?: "low" | "medium" | "high" | string | null
+  cadAnalysisMeta?: any
+}
+
 export function calcolaTonnellaggio(volumeCm3: number, materialDensity?: number): number {
   // Simplified estimation: volume * density -> grams. Convert to tonnellaggio as arbitrary factor.
   const grams = volumeCm3 * (materialDensity ?? 1)
@@ -58,7 +64,7 @@ export function calcolaRaffreddamento(materialTemp?: number): { suggestedC: numb
   return { suggestedC: materialTemp ?? 60 }
 }
 
-export function calcolaParametri(input: CalculationInput): CalculationResult {
+export function calcolaParametri(input: CalculationInput, context?: CalcContext): CalculationResult {
   const { volumeCm3, press, material, shotVolumeCm3 } = input
   const ton = calcolaTonnellaggio(volumeCm3, material?.densityGPerCm3)
   const pressure = calcolaPressione(volumeCm3, shotVolumeCm3)

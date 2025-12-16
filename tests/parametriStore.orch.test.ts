@@ -86,4 +86,41 @@ describe('parametriStore orchestration (integration-like unit test)', () => {
     expect(res).not.toBeNull()
     expect(res?.tonnellaggioRequired).toBeGreaterThanOrEqual(1)
   })
+
+  test('passes defect context to calcolaParametri', async () => {
+    // mock calcolaParametri to capture context
+    const calc = require('../src/core/calcEngine')
+    const mockRes = { tonnellaggioRequired: 1, pressureBar: 50, screwDiameterMm: 20, velocityMmPerS: 100, switchoverMs: 10, times: { injectionMs: 50, coolingMs: 200 }, cooling: { suggestedC: 60 } }
+    calc.calcolaParametri = jest.fn(() => mockRes)
+
+    const drawing = require('../src/stores/drawingStore')
+    const press = require('../src/stores/pressStore')
+    const material = require('../src/stores/materialStore')
+    const defects = require('../src/stores/defectsStore')
+    const param = require('../src/stores/parametriStore')
+
+    // set bounding box and defect selection
+    drawing.useDrawingStore.getState().setResult?.({ volumeCm3: 10, boundingBox: { x: 10, y: 50, z: 20 } })
+    defects.useDefectsStore.getState().setSelectedDefectId?.('flash')
+    defects.useDefectsStore.getState().setSelectedSeverity?.('high')
+
+    // set press and material so orchestration triggers
+    const samplePress = { id: 'testpress', name: 'Test Press', tonnellaggio: 100, screwDiameters: [20], shotVolumeCm3: 50, maxPressureBar: 200, maxSpeedMmPerS: 300 }
+    press.usePressStore.getState().setCatalog?.({ [samplePress.id]: samplePress })
+    press.usePressStore.getState().selectPress?.(samplePress.id)
+    press.usePressStore.getState().selectScrewDiameter?.(20)
+    const sampleMat = { id: 'TEST_MAT', name: 'Test Material', densityGPerCm3: 1.0, meltIndex: null, recommendedTemperatureC: 60 }
+    material.useMaterialStore.getState().setCatalog?.({ [sampleMat.id]: sampleMat })
+    material.useMaterialStore.getState().selectMaterial?.(sampleMat.id)
+
+    await new Promise((r) => setTimeout(r, 600))
+
+    expect(calc.calcolaParametri).toHaveBeenCalled()
+    const calledWith = (calc.calcolaParametri as jest.Mock).mock.calls[0][1]
+    expect(calledWith).toBeDefined()
+    expect(calledWith.defectId).toBe('flash')
+    expect(calledWith.severity).toBe('high')
+    expect(calledWith.cadAnalysisMeta).toBeDefined()
+    expect(calledWith.cadAnalysisMeta.bbox_mm).toEqual({ x: 10, y: 50, z: 20 })
+  })
 })

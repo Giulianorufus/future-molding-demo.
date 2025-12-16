@@ -36,7 +36,16 @@ export const useParametriStore = create<ParametriState>((set) => ({
     set({ isCalculating: true, loading: true, error: null })
     try {
       try { logInput?.(input) } catch (_) {}
-      const res = calcolaParametri(input as any) as CalculationResult
+          // build context from lastDefectFix and drawing bounding box if available
+          const curLastDefect = (useParametriStore as any).getState?.().lastDefectFix ?? null
+          const d = useDrawingStore.getState()
+          const context: any = {
+            defectId: curLastDefect?.defectId ?? null,
+            severity: curLastDefect?.severity ?? null,
+            cadAnalysisMeta: d?.boundingBox ? { bbox_mm: d.boundingBox, projectedArea_cm2: d.surfaceCm2 } : null,
+          }
+
+          const res = calcolaParametri(input as any, context) as CalculationResult
       try { logOutput?.(res) } catch (_) {}
       set({ lastInput: input, result: res, isCalculating: false, loading: false })
     } catch (err: any) {

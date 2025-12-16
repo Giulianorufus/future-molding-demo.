@@ -92,30 +92,58 @@ export async function analyzeSTEP(arrayBuffer: ArrayBuffer): Promise<SimpleAnaly
     const { getOcct } = await import("@/lib/occtInit");
     const occt = await getOcct();
     const data = new Uint8Array(arrayBuffer);
-    const res = await occt.readStepFile(data, "model.step");
+
+    // tolerant reader selection (align with cadParser helpers)
+    const pickOcctFn = (occtAny: any, names: string[]) => {
+      for (const n of names) {
+        const fn = occtAny?.[n];
+        if (typeof fn === 'function') return fn.bind(occtAny);
+      }
+      return null;
+    };
+    const callOcctReader = async (fn: any, dataArg: Uint8Array, fileName: string) => {
+      try { return await Promise.resolve(fn(dataArg, null)); } catch (e) { return await Promise.resolve(fn(dataArg, fileName || null)); }
+    };
+    const flattenTriplets = (arr: any) => {
+      if (!arr) return arr; if (Array.isArray(arr) && arr.length > 0 && Array.isArray(arr[0])) return arr.flat(); return arr;
+    };
+
+    const fn = pickOcctFn(occt, ['ReadStepFile', 'readStepFile', 'ReadSTEPFile', 'readSTEPFile']);
+    if (!fn) throw new Error('OCCT STEP reader not available');
+    const res = await callOcctReader(fn, data, 'model.step');
     let vol_mm3 = 0;
     let area_mm2 = 0;
     const bbox = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
-    for (const m of res.meshes ?? []) {
-      const p = m.positions as Float32Array;
-      const idx = (m.indices as Uint32Array) ?? new Uint32Array(p.length / 3);
-      if (!m.indices) { for (let i = 0; i < p.length / 3; i += 3) { idx[i] = i; idx[i + 1] = i + 1; idx[i + 2] = i + 2; } }
-      for (let i = 0; i < p.length; i += 3) {
+    for (const m of (res.meshes ? res.meshes : (res.mesh ? [res.mesh] : [])) ?? []) {
+      const pArr = m.positions ?? m.attributes?.position?.array ?? m.attributes?.position?.data;
+      const p = flattenTriplets(pArr) as Float32Array | number[];
+      const idxArr = m.indices ?? m.index?.array ?? m.attributes?.index?.array ?? m.attributes?.index?.data;
+      const idxFlat = flattenTriplets(idxArr) as number[] | Uint32Array | undefined;
+      const idx = idxFlat && idxFlat.length ? idxFlat : undefined;
+      if (!p) continue;
+      const pLen = (p as any).length || 0;
+      const indexArr = idx ? Array.from(idx as any) : undefined;
+      if (!indexArr) {
+        for (let i = 0; i < pLen; i += 3) indexArr?.push(i / 3);
+      }
+      for (let i = 0; i < pLen; i += 3) {
         const x = p[i], y = p[i + 1], z = p[i + 2];
         if (x < bbox.min.x) bbox.min.x = x; if (y < bbox.min.y) bbox.min.y = y; if (z < bbox.min.z) bbox.min.z = z;
         if (x > bbox.max.x) bbox.max.x = x; if (y > bbox.max.y) bbox.max.y = y; if (z > bbox.max.z) bbox.max.z = z;
       }
       const a = new Vector3(), b = new Vector3(), c = new Vector3();
-      for (let i = 0; i < idx.length; i += 3) {
-        const i0 = idx[i] * 3, i1 = idx[i + 1] * 3, i2 = idx[i + 2] * 3;
-        a.set(p[i0], p[i0 + 1], p[i0 + 2]);
-        b.set(p[i1], p[i1 + 1], p[i1 + 2]);
-        c.set(p[i2], p[i2 + 1], p[i2 + 2]);
-        vol_mm3 += a.dot(b.cross(c));
-        const ab = new Vector3().subVectors(b, a);
-        const ac = new Vector3().subVectors(c, a);
-        const n = new Vector3().crossVectors(ab, ac);
-        area_mm2 += 0.5 * n.length();
+      if (indexArr) {
+        for (let i = 0; i < indexArr.length; i += 3) {
+          const ii0 = indexArr[i] * 3, ii1 = indexArr[i + 1] * 3, ii2 = indexArr[i + 2] * 3;
+          a.set(p[ii0], p[ii0 + 1], p[ii0 + 2]);
+          b.set(p[ii1], p[ii1 + 1], p[ii1 + 2]);
+          c.set(p[ii2], p[ii2 + 1], p[ii2 + 2]);
+          vol_mm3 += a.dot(b.cross(c));
+          const ab = new Vector3().subVectors(b, a);
+          const ac = new Vector3().subVectors(c, a);
+          const n = new Vector3().crossVectors(ab, ac);
+          area_mm2 += 0.5 * n.length();
+        }
       }
     }
     vol_mm3 = Math.abs(vol_mm3) / 6;

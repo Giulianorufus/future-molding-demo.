@@ -6,19 +6,58 @@ import { getOcct } from './occtInit';
 async function parseBuffer(dataBuf: ArrayBuffer, fileName: string, ext: string) {
   const data = new Uint8Array(dataBuf);
   const occt = await getOcct();
+  // local tolerant helpers similar to cadParser
+  function flattenTriplets(arr: any): any {
+    if (!arr) return arr;
+    if (Array.isArray(arr) && arr.length > 0 && Array.isArray(arr[0])) return arr.flat();
+    return arr;
+  }
+  function normalizeMeshes(meshes: any[] | undefined | null) {
+    if (!meshes || !Array.isArray(meshes)) return [];
+    return meshes
+      .map((m) => {
+        const positions = m.positions ?? m.attributes?.position?.array ?? m.attributes?.position?.data;
+        const indices = m.indices ?? m.index?.array ?? m.attributes?.index?.array ?? m.attributes?.index?.data;
+        const normals = m.normals ?? m.attributes?.normal?.array ?? m.attributes?.normal?.data;
+        const pos = flattenTriplets(positions);
+        if (!pos) return null;
+        return { positions: pos, indices: flattenTriplets(indices), normals: flattenTriplets(normals) };
+      })
+      .filter(Boolean);
+  }
+
+  function pickOcctFn(occt: any, names: string[]) {
+    for (const n of names) {
+      const fn = occt?.[n];
+      if (typeof fn === 'function') return fn.bind(occt);
+    }
+    return null;
+  }
+
+  async function callOcctReader(fn: any, data: Uint8Array, fileName: string) {
+    try { return await Promise.resolve(fn(data, null)); } catch (e) { return await Promise.resolve(fn(data, fileName || null)); }
+  }
 
   if (ext === 'step' || ext === 'stp') {
-    const res = await occt.readStepFile(data, fileName || 'model.step');
-    return { meshes: res.meshes ?? null };
+    const fn = pickOcctFn(occt, ['ReadStepFile', 'readStepFile', 'ReadSTEPFile', 'readSTEPFile']);
+    if (!fn) throw new Error('OCCT STEP reader not available');
+    const res = await callOcctReader(fn, data, fileName || 'model.step');
+    const meshes = normalizeMeshes(res?.meshes ?? null);
+    return { meshes };
   }
   if (ext === 'iges' || ext === 'igs') {
-    const res = await occt.readIgesFile(data, fileName || 'model.iges');
-    return { meshes: res.meshes ?? null };
+    const fn = pickOcctFn(occt, ['ReadIgesFile', 'readIgesFile', 'ReadIGESFile', 'readIGESFile']);
+    if (!fn) throw new Error('OCCT IGES reader not available');
+    const res = await callOcctReader(fn, data, fileName || 'model.iges');
+    const meshes = normalizeMeshes(res?.meshes ?? null);
+    return { meshes };
   }
   if (ext === 'stl') {
-    const res = await occt.readStlFile(data, fileName || 'model.stl');
-    const meshArr = res.meshes ?? (res.mesh ? [res.mesh] : []);
-    return { meshes: meshArr };
+    const fn = pickOcctFn(occt, ['ReadStlFile', 'readStlFile', 'ReadSTLFile', 'readSTLFile']);
+    if (!fn) throw new Error('OCCT STL reader not available');
+    const res = await callOcctReader(fn, data, fileName || 'model.stl');
+    const meshes = normalizeMeshes(res?.meshes ?? (res?.mesh ? [res.mesh] : []));
+    return { meshes };
   }
   throw new Error('Formato CAD non supportato dal worker');
 }

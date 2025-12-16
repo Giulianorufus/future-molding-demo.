@@ -1,0 +1,12 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Simple box'),'2;1');
+FILE_NAME('box_20mm.step','2025-12-16T00:00:00',(''),'','forma-facile','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN_CC1')); 
+ENDSEC;
+DATA;
+/* Minimal placeholder STEP content representing a small box.
+   Replace with a real STEP export if precise geometry is required.
+*/
+ENDSEC;
+END-ISO-10303-21;

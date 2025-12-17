@@ -125,6 +125,37 @@ function failSoftResult(ext: string, message: string): ParsedCADResult {
   };
 }
 
+// Worker gating and helpers (module scope so we can export disposeCadWorker)
+const CAD_ENABLED = process.env.RUN_CAD_INTEGRATION === '1' && process.env.NODE_ENV !== 'test';
+let _cadWorker: any = null;
+
+function getWorker(): any | null {
+  if (!CAD_ENABLED) return null;
+  if (_cadWorker) return _cadWorker;
+
+  let importMetaUrl: string | undefined;
+  try {
+    // evaluate at runtime; kept inside a string to avoid TS parsing
+    // eslint-disable-next-line no-new-func
+    importMetaUrl = new Function('return import.meta.url')();
+  } catch (_) {
+    importMetaUrl = undefined;
+  }
+
+  _cadWorker = importMetaUrl
+    ? new Worker(new URL('./cadWorker.ts', importMetaUrl), { type: 'module' })
+    : new Worker('./cadWorker.js', { type: 'module' });
+
+  return _cadWorker;
+}
+
+export function disposeCadWorker() {
+  if (_cadWorker) {
+    try { _cadWorker.terminate(); } catch (_) {}
+    _cadWorker = null;
+  }
+}
+
 export async function parseCAD(file: File, onProgress?: (st: { progress?: number; status?: string; message?: string }) => void): Promise<ParsedCADResult> {
   const ext = file.name.split('.').pop()?.toLowerCase();
   const arrayBuffer = await file.arrayBuffer();
@@ -132,38 +163,6 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
   if (!ext) throw new Error('Formato CAD non riconosciuto');
 
   // Try worker-based parsing first (better for large files and to avoid blocking main thread)
-  // Worker creation is gated: do not create workers during unit tests.
-  const CAD_ENABLED = process.env.RUN_CAD_INTEGRATION === '1' && process.env.NODE_ENV !== 'test';
-  let worker: any = null;
-
-  function getWorker(): any | null {
-    if (!CAD_ENABLED) return null;
-    if (worker) return worker;
-
-    let importMetaUrl: string | undefined;
-    try {
-      // evaluate at runtime; kept inside a string to avoid TS parsing
-      // eslint-disable-next-line no-new-func
-      importMetaUrl = new Function('return import.meta.url')();
-    } catch (_) {
-      importMetaUrl = undefined;
-    }
-
-    worker = importMetaUrl
-      ? new Worker(new URL('./cadWorker.ts', importMetaUrl), { type: 'module' })
-      : new Worker('./cadWorker.js', { type: 'module' });
-
-    return worker;
-  }
-
-  // expose a dispose helper to allow explicit cleanup in runtime
-  export function disposeCadWorker() {
-    if (worker) {
-      try { worker.terminate(); } catch (_) {}
-      worker = null;
-    }
-  }
-
   if (typeof Worker !== 'undefined') {
     const w = getWorker();
     if (w) {

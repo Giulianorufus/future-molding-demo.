@@ -1,6 +1,7 @@
 // Browser-compatible CAD analysis system for STEP, IGES, STL files
 import * as THREE from 'three';
 import { parseCAD } from './cadParser';
+import { cadFallbackResult } from './cadFallback';
 import * as log from '@/lib/log';
 import { recordParseMetric } from '@/services/metrics';
 
@@ -51,30 +52,31 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
         meshes: (geom as any).meshes ?? [],
       };
     } catch (err: any) {
-      // Se il parser fallisce, log e fallback alla versione semplificata
+      // Se il parser fallisce, log e fallback unificato: non rilanciamo mai
       log.warn('parseCAD failed:', err);
       try {
         if (onProgress) {
           try { onProgress({ progress: 0, status: 'fallback', message: String(err?.message ?? err) }); } catch (e) {}
         }
       } catch (_) {}
-      const simplified = await analyzeCADFile_Simplified(file);
-      simplified.warnings = simplified.warnings || [];
-      simplified.warnings.push(`Parsing avanzato fallito: ${err?.message ?? err}`);
-      // convert simplified to AnalysisResult shape
+
+      const fb = cadFallbackResult(err);
+      // Map fallback to AnalysisResult shape
+      const warnings = Array.isArray(fb.warnings) ? fb.warnings.slice() : [];
+      warnings.push(...(fb.assumptions || []).map((a) => `Assumption: ${a}`));
       return {
-        volume: simplified.volume,
-        thickness_min: simplified.thickness_min,
-        thickness_max: simplified.thickness_max,
-        thin_zones: simplified.thin_zones,
-        long_runner: simplified.long_runner,
-        surface_area: simplified.surface_area,
-        injection_points: simplified.injection_points,
-        projectedArea_cm2: simplified.projectedArea_cm2 ?? 0,
-        cavities: simplified.cavities ?? 1,
-        thickness_map: simplified.thickness_min !== undefined ? [((simplified.thickness_min + (simplified.thickness_max ?? simplified.thickness_min)) / 2) || 0] : [],
-        features: simplified.features ?? [],
-        warnings: simplified.warnings ?? [],
+        volume: fb.volume_cm3,
+        thickness_min: fb.thickness_mm.min,
+        thickness_max: fb.thickness_mm.max,
+        thin_zones: fb.thickness_mm.avg < 1.2,
+        long_runner: false,
+        surface_area: fb.projectedArea_cm2,
+        injection_points: 0,
+        projectedArea_cm2: fb.projectedArea_cm2,
+        cavities: 1,
+        thickness_map: [fb.thickness_mm.avg],
+        features: ['fallback'],
+        warnings,
         meshes: [],
       };
     }

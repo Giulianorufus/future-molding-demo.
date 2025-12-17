@@ -17,4 +17,5 @@ module.exports = {
     "<rootDir>/tests/e2e/",
     "\\.int\\.test\\.ts$",
   ],
+  globalTeardown: "<rootDir>/jest.globalTeardown.cjs",
 };

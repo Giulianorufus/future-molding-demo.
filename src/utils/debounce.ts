@@ -3,5 +3,6 @@ export function debounce<T extends (...args: any[]) => void>(fn: T, delay: numbe
   return (...args: Parameters<T>) => {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => fn(...args), delay);
+    try { (timeoutId as any)?.unref?.(); } catch (_) {}
   };
 }

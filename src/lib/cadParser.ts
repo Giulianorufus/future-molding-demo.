@@ -132,60 +132,68 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
   if (!ext) throw new Error('Formato CAD non riconosciuto');
 
   // Try worker-based parsing first (better for large files and to avoid blocking main thread)
-  if (typeof Worker !== 'undefined') {
-    try {
-      // Resolve import.meta.url at runtime using a dynamic function so TypeScript
-      // (and ts-jest) won't parse a literal `import.meta` expression which
-      // causes TS1343 when module settings differ. If unavailable, fall back
-      // to a plain worker path (tests run under Node will skip worker usage).
-      let importMetaUrl: string | undefined;
-      try {
-        // evaluate at runtime; kept inside a string to avoid TS parsing
-        // eslint-disable-next-line no-new-func
-        importMetaUrl = new Function('return import.meta.url')();
-      } catch (_) {
-        importMetaUrl = undefined;
-      }
+  // Worker creation is gated: do not create workers during unit tests.
+  const CAD_ENABLED = process.env.RUN_CAD_INTEGRATION === '1' && process.env.NODE_ENV !== 'test';
+  let worker: any = null;
 
-      const worker = importMetaUrl
-        ? new Worker(new URL('./cadWorker.ts', importMetaUrl), { type: 'module' })
-        : new Worker('./cadWorker.js', { type: 'module' });
-      const id = Math.random().toString(36).slice(2, 9);
-      const p = new Promise<any>((resolve, reject) => {
-        const onmsg = (ev: MessageEvent) => {
-          const msg = ev.data || {};
-          if (msg.id !== id) return;
-          // progress update
-          if (typeof msg.progress === 'number' || msg.status) {
-            try {
-              if (onProgress) {
-                try { onProgress({ progress: msg.progress, status: msg.status }); } catch (e) {}
-              }
-            } catch (_) {}
-          }
-          // final result
-          if (msg.ok !== undefined) {
-            worker.removeEventListener('message', onmsg);
-            worker.terminate();
-            if (msg.ok) resolve(msg.result);
-            else reject(new Error(msg.error || 'Unknown worker error'));
-          }
-        };
-        worker.addEventListener('message', onmsg);
-        worker.postMessage({ id, arrayBuffer, fileName: file.name, ext }, [arrayBuffer]);
-      });
-      const out = await p;
-      const meshes = normalizeMeshes(out.meshes ?? null);
-      const g = computeFromMeshes(meshes ?? undefined);
-      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
-    } catch (e) {
-      // fallback to main-thread parse with clearer message
-      console.warn('Worker parsing failed, falling back to main thread:', e);
+  function getWorker(): any | null {
+    if (!CAD_ENABLED) return null;
+    if (worker) return worker;
+
+    let importMetaUrl: string | undefined;
+    try {
+      // evaluate at runtime; kept inside a string to avoid TS parsing
+      // eslint-disable-next-line no-new-func
+      importMetaUrl = new Function('return import.meta.url')();
+    } catch (_) {
+      importMetaUrl = undefined;
+    }
+
+    worker = importMetaUrl
+      ? new Worker(new URL('./cadWorker.ts', importMetaUrl), { type: 'module' })
+      : new Worker('./cadWorker.js', { type: 'module' });
+
+    return worker;
+  }
+
+  // expose a dispose helper to allow explicit cleanup in runtime
+  export function disposeCadWorker() {
+    if (worker) {
+      try { worker.terminate(); } catch (_) {}
+      worker = null;
+    }
+  }
+
+  if (typeof Worker !== 'undefined') {
+    const w = getWorker();
+    if (w) {
       try {
-        if (onProgress) {
-          try { onProgress({ progress: 0, status: 'fallback' }); } catch (err) {}
-        }
-      } catch (_) {}
+        const id = Math.random().toString(36).slice(2, 9);
+        const p = new Promise<any>((resolve, reject) => {
+          const onmsg = (ev: MessageEvent) => {
+            const msg = ev.data || {};
+            if (msg.id !== id) return;
+            if (typeof msg.progress === 'number' || msg.status) {
+              try { if (onProgress) { try { onProgress({ progress: msg.progress, status: msg.status }); } catch (e) {} } } catch (_) {}
+            }
+            if (msg.ok !== undefined) {
+              try { w.removeEventListener('message', onmsg); } catch (_) {}
+              if (msg.ok) resolve(msg.result);
+              else reject(new Error(msg.error || 'Unknown worker error'));
+            }
+          };
+          try { w.addEventListener('message', onmsg); } catch (_) {}
+          try { w.postMessage({ id, arrayBuffer, fileName: file.name, ext }, [arrayBuffer]); } catch (err) { reject(err); }
+        });
+        const out = await p;
+        const meshes = normalizeMeshes(out.meshes ?? null);
+        const g = computeFromMeshes(meshes ?? undefined);
+        return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
+      } catch (e) {
+        // fallback to main-thread parse with clearer message
+        console.warn('Worker parsing failed, falling back to main thread:', e);
+        try { if (onProgress) { try { onProgress({ progress: 0, status: 'fallback' }); } catch (err) {} } } catch (_) {}
+      }
     }
   }
 

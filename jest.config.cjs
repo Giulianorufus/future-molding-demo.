@@ -15,5 +15,6 @@ module.exports = {
     "<rootDir>/project-full-preview/",
     "<rootDir>/vendor/",
     "<rootDir>/tests/e2e/",
+    "\\.int\\.test\\.ts$",
   ],
 };

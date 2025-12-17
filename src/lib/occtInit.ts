@@ -166,6 +166,12 @@ export function scheduleUnloadOcct(timeoutMs = 30000) {
       _unloadTimer = null;
     }
   }, timeoutMs) as any;
+  try {
+    // allow Node to exit even if unload timer is pending
+    if (_unloadTimer && typeof _unloadTimer.unref === 'function') {
+      try { _unloadTimer.unref(); } catch (_) { /* ignore */ }
+    }
+  } catch (_) {}
 }
 
 export function clearUnloadSchedule() {

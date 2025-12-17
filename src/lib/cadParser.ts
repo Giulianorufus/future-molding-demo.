@@ -196,17 +196,17 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
     const data = new Uint8Array(arrayBuffer);
 
     if (ext === "step" || ext === "stp") {
-      const fn = pickOcctFn(occt, ["ReadStepFile", "readStepFile", "ReadSTEPFile", "readSTEPFile"]);
-      if (!fn) return failSoftResult(ext, "OCCT API mismatch: no STEP reader found on occt instance.");
-
-      const res = await callOcctReader(fn, data, file.name || "model.step");
-      if (res?.success === false) return failSoftResult(ext, "OCCT STEP import failed (success=false).");
-
-      const meshes = normalizeMeshes(res?.meshes);
-      const g = computeFromMeshes(meshes as any);
-
-      try { occtInit.scheduleUnloadOcct(); } catch (_) {}
-      return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
+        // keep occtInit around for unload scheduling; use occt-client for step read
+        try {
+          const { readSTEP } = await import('@/lib/occt/occtClient');
+          const res = await readSTEP(data);
+          const meshes = normalizeMeshes(res?.meshes);
+          const g = computeFromMeshes(meshes ?? undefined);
+          try { occtInit.scheduleUnloadOcct(); } catch (_) {}
+          return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
+        } catch (err: any) {
+          return failSoftResult(ext, `OCCT STEP import failed: ${String(err?.message ?? err)}`);
+        }
     }
 
     if (ext === "iges" || ext === "igs") {

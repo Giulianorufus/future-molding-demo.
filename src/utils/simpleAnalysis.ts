@@ -87,30 +87,18 @@ export async function analyzeSTEP(arrayBuffer: ArrayBuffer): Promise<SimpleAnaly
       meshes: (geom as any).meshes ?? null,
     };
   } catch (e) {
-    // fallback to occt direct mesh iteration (older behavior)
-    log.warn('parseCAD failed for STEP; falling back to lower-level parse:', e);
-    const { getOcct } = await import("@/lib/occtInit");
-    const occt = await getOcct();
+    // fallback to occt direct mesh iteration (older behavior) using occt client
+    log.warn('parseCAD failed for STEP; falling back to lower-level parse via occt client:', e);
+    const { readSTEP } = await import('@/lib/occt/occtClient');
     const data = new Uint8Array(arrayBuffer);
 
-    // tolerant reader selection (align with cadParser helpers)
-    const pickOcctFn = (occtAny: any, names: string[]) => {
-      for (const n of names) {
-        const fn = occtAny?.[n];
-        if (typeof fn === 'function') return fn.bind(occtAny);
-      }
-      return null;
-    };
-    const callOcctReader = async (fn: any, dataArg: Uint8Array, fileName: string) => {
-      try { return await Promise.resolve(fn(dataArg, null)); } catch (e) { return await Promise.resolve(fn(dataArg, fileName || null)); }
-    };
     const flattenTriplets = (arr: any) => {
-      if (!arr) return arr; if (Array.isArray(arr) && arr.length > 0 && Array.isArray(arr[0])) return arr.flat(); return arr;
+      if (!arr) return arr;
+      if (Array.isArray(arr) && arr.length > 0 && Array.isArray(arr[0])) return arr.flat();
+      return arr;
     };
 
-    const fn = pickOcctFn(occt, ['ReadStepFile', 'readStepFile', 'ReadSTEPFile', 'readSTEPFile']);
-    if (!fn) throw new Error('OCCT STEP reader not available');
-    const res = await callOcctReader(fn, data, 'model.step');
+    const res = await readSTEP(data);
     let vol_mm3 = 0;
     let area_mm2 = 0;
     const bbox = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
@@ -122,9 +110,9 @@ export async function analyzeSTEP(arrayBuffer: ArrayBuffer): Promise<SimpleAnaly
       const idx = idxFlat && idxFlat.length ? idxFlat : undefined;
       if (!p) continue;
       const pLen = (p as any).length || 0;
-      const indexArr = idx ? Array.from(idx as any) : undefined;
-      if (!indexArr) {
-        for (let i = 0; i < pLen; i += 3) indexArr?.push(i / 3);
+      const indexArr: number[] = idx ? Array.from(idx as any).map((v: any) => Number(v)) : [];
+      if (indexArr.length === 0) {
+        for (let vi = 0; vi < pLen / 3; vi++) indexArr.push(vi);
       }
       for (let i = 0; i < pLen; i += 3) {
         const x = p[i], y = p[i + 1], z = p[i + 2];
@@ -132,9 +120,11 @@ export async function analyzeSTEP(arrayBuffer: ArrayBuffer): Promise<SimpleAnaly
         if (x > bbox.max.x) bbox.max.x = x; if (y > bbox.max.y) bbox.max.y = y; if (z > bbox.max.z) bbox.max.z = z;
       }
       const a = new Vector3(), b = new Vector3(), c = new Vector3();
-      if (indexArr) {
+      if (indexArr && indexArr.length) {
         for (let i = 0; i < indexArr.length; i += 3) {
-          const ii0 = indexArr[i] * 3, ii1 = indexArr[i + 1] * 3, ii2 = indexArr[i + 2] * 3;
+          const ii0 = indexArr[i] * 3;
+          const ii1 = indexArr[i + 1] * 3;
+          const ii2 = indexArr[i + 2] * 3;
           a.set(p[ii0], p[ii0 + 1], p[ii0 + 2]);
           b.set(p[ii1], p[ii1 + 1], p[ii1 + 2]);
           c.set(p[ii2], p[ii2 + 1], p[ii2 + 2]);

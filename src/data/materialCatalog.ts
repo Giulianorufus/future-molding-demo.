@@ -1,7 +1,7 @@
 // Catalogo materiali Future Molding — 20 materiali tecnici
-// Compatibile con calcEngine / calcTypes
+// Export nominativi e tipi forti per l'integrazione con il motore
 
-import type { MaterialInput } from "../engine/calcTypes";
+export type ViscosityClass = "low" | "medium" | "high";
 
 export interface MaterialSpec {
   id: string;
@@ -22,7 +22,7 @@ export interface MaterialSpec {
   source?: string;
 }
 
-const materialCatalog: MaterialSpec[] = [
+export const materialCatalog: MaterialSpec[] = [
 
   // -----------------------------------------
   // 1. PP Homopolimero
@@ -426,11 +426,6 @@ const materialCatalog: MaterialSpec[] = [
 
 ];
 
-export default materialCatalog;
-
-/**
- * Helper per il motore matematico
- */
-export function getMaterialInput(id: string) {
+export function getMaterialInput(id: string): MaterialSpec | null {
   return materialCatalog.find((m) => m.id === id) || null;
 }

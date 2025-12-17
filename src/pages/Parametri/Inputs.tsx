@@ -1,6 +1,7 @@
+import React, { useEffect, useState } from "react";
 import { useParametriStore } from "../../store/parametriStore";
-import arburgPressCatalog from "../../data/arburgPressCatalog";
-import materialCatalog from "../../data/materialCatalog";
+import { ARBURG_PRESS_CATALOG } from "../../data/arburgPressCatalog";
+import { materialCatalog } from "../../data/materialCatalog";
 
 export default function Inputs() {
   const {
@@ -13,12 +14,51 @@ export default function Inputs() {
     calculate,
   } = useParametriStore();
 
-  const selectedMachine = arburgPressCatalog.find((m: any) => m.id === pressaId);
+  const selectedMachine = ARBURG_PRESS_CATALOG.find((m: any) => m.id === pressaId);
 
   const availableScrews: number[] =
-    selectedMachine?.injectionUnits
-      ?.map((u: any) => u.screwDiameter_mm)
+    (selectedMachine?.injectionUnits || [])
+      .flatMap((iu: any) => (iu.screwVariants || []).map((s: any) => s.screwDiameter_mm))
       .filter((v: any, i: number, arr: any[]) => arr.indexOf(v) === i) || [];
+
+  const [screwWarning, setScrewWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    // when pressa changes, if current screw is not available, fallback to nearest
+    if (!pressaId) {
+      setScrewWarning(null);
+      return;
+    }
+
+    if (!availableScrews || availableScrews.length === 0) {
+      setScrewWarning("Nessuna vite disponibile per questa pressa");
+      setScrewDiameter(null);
+      return;
+    }
+
+    if (screwDiameter_mm == null) {
+      // nothing selected yet
+      setScrewWarning(null);
+      return;
+    }
+
+    if (!availableScrews.includes(screwDiameter_mm)) {
+      // find nearest; if tie prefer the larger diameter
+      const sorted = availableScrews.slice().sort((a, b) => {
+        const da = Math.abs(a - screwDiameter_mm);
+        const db = Math.abs(b - screwDiameter_mm);
+        if (da === db) return b - a; // prefer larger
+        return da - db;
+      });
+      const nearest = sorted[0];
+      setScrewDiameter(nearest);
+      setScrewWarning(`Vite ${screwDiameter_mm} mm non disponibile su questa pressa — selezionata ${nearest} mm`);
+      const t = setTimeout(() => setScrewWarning(null), 6000);
+      return () => clearTimeout(t);
+    } else {
+      setScrewWarning(null);
+    }
+  }, [pressaId, screwDiameter_mm, availableScrews, setScrewDiameter]);
 
   return (
     <div className="bg-[#0b1f30] p-4 rounded-lg border border-yellow-500 space-y-4">
@@ -35,7 +75,7 @@ export default function Inputs() {
           onChange={(e) => setPressaId(e.target.value || null)}
         >
           <option value="">Seleziona pressa</option>
-          {arburgPressCatalog.map((m: any) => (
+          {ARBURG_PRESS_CATALOG.map((m: any) => (
             <option key={m.id} value={m.id}>
               {m.nome ?? m.id}
             </option>
@@ -61,6 +101,9 @@ export default function Inputs() {
               </option>
             ))}
           </select>
+          {screwWarning && (
+            <p className="text-sm text-yellow-300 mt-1">{screwWarning}</p>
+          )}
         </div>
       )}
 

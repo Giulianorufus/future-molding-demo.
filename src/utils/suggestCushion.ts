@@ -1,4 +1,4 @@
-import materialCatalog, { getMaterialInput } from "@/data/materialCatalog";
+import { materialCatalog, getMaterialInput } from "@/data/materialCatalog";
 
 // Tipi minimi per evitare dipendenze incrociate
 export type Viscosity = "alta" | "media" | "bassa" | "elastomero";

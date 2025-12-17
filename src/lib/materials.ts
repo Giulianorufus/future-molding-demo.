@@ -1,4 +1,4 @@
-import materialCatalog, { getMaterialInput } from '../data/materialCatalog';
+import { materialCatalog, getMaterialInput } from '../data/materialCatalog';
 
 export interface MaterialData {
   code: string;

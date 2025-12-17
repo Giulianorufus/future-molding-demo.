@@ -1,6 +1,8 @@
 import { PressProfile } from "./pressProfiles";
 import { MaterialInfo } from "./materialData";
 import { recommendedClampForceTon } from "./clampForce";
+import { materialCatalog, type MaterialSpec, getMaterialInput } from "../data/materialCatalog";
+import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
 import { parseOverride } from "../utils/overrides";
 import { enforceSafety } from "./safetyChecks";
 import { useDrawingStore } from "../stores/drawingStore";
@@ -184,9 +186,38 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const projAreaFromStore = geometry?.areaProiettata_cm2 ?? input.projAreaCm2;
   const pieceVolFromStore = geometry?.volumePezzo_cm3 ?? input.volumeCm3 ?? pieceVol;
 
-  const suggestedInjectionSpeedCm3s = (thickness ? Math.round(injectionSpeedCm3s * Math.max(0.8, Math.min(1.4, 1 + (1.5 - Math.log10(thickness + 1)) * 0.08))) : injectionSpeedCm3s);
+  let suggestedInjectionSpeedCm3s = (thickness ? Math.round(injectionSpeedCm3s * Math.max(0.8, Math.min(1.4, 1 + (1.5 - Math.log10(thickness + 1)) * 0.08))) : injectionSpeedCm3s);
   const computedInjectionPressure_bar = Math.round(Math.min(1500, ((family === 'PP' || family === 'PA66GF') ? 50 : 60) * Math.sqrt((projAreaFromStore || 10))));
-  const fillTime_s = Math.max(0.1, Math.round(((pieceVolFromStore || pieceVol) / Math.max(1, suggestedInjectionSpeedCm3s)) * 100) / 100);
+  let fillTime_s = Math.max(0.1, Math.round(((pieceVolFromStore || pieceVol) / Math.max(1, suggestedInjectionSpeedCm3s)) * 100) / 100);
+
+  // --- Apply press max flow guardrail: compute required flow and clamp to press maxFlow if needed ---
+  try {
+    const shotVol = (pieceVolFromStore || pieceVol) || 0;
+    const requiredFlow_cm3_s = shotVol / Math.max(1e-6, fillTime_s);
+    const maxFlow = pm?.maxSpeedCm3s ?? (press?.maxSpeedCm3s ?? undefined);
+    if (typeof maxFlow === 'number' && Number.isFinite(maxFlow) && requiredFlow_cm3_s > maxFlow) {
+      const cappedFlow = maxFlow;
+      warnings.push(`Limited by press maxInjectionFlow (${cappedFlow} cm³/s)`);
+
+      // adjust fill time to match capped flow
+      fillTime_s = Math.max(0.01, Math.round((shotVol / cappedFlow) * 100) / 100);
+
+      // adjust suggested injection speed to the capped flow
+      suggestedInjectionSpeedCm3s = cappedFlow;
+
+      // if we have a screw diameter, convert capped flow to screw linear speed and rpm
+      const sd = Number(screwDiameter || (input as any).screwDiameter || 0) || 0;
+      if (sd > 0) {
+        const screwArea_mm2 = Math.PI * (sd * sd) / 4; // mm^2
+        const screwLinear_mm_s = (cappedFlow * 1000) / Math.max(1e-6, screwArea_mm2); // mm3/s -> mm/s
+        const newRpm = Math.round((screwLinear_mm_s * 60) / (Math.PI * sd));
+        // replace screwRpm with the capped value if it's lower
+        if (typeof newRpm === 'number' && Number.isFinite(newRpm)) screwRpm = newRpm;
+      }
+    }
+  } catch (e) {
+    // non-blocking: keep original values on error
+  }
   const vpRes: VPResult = { vpVolumeCm3: vpVolume, switchVolumeCm3: Math.max(1, Math.round((pieceVolFromStore || pieceVol) * 0.6)) };
   const packRes: PackResult = { packPressureBar: Math.round((material as any).density_g_cm3 ?? 1 * Math.max(20, Math.min(200, (pieceVolFromStore || pieceVol) * 0.5))), packTimeSec: packTime };
   const coolingFromThickness = thickness ? Math.round((material.crystalline ? 22 : 18) * (1 + Math.pow((thickness / 3), 1.4) * 0.25)) : (material.crystalline ? 22 : 18);
@@ -247,6 +278,13 @@ export function calculateParameters(input: CalcInput): CalcResult {
   };
 }
 
+// helper per recuperare materiale dal catalogo (punto unico di verità)
+export function getMaterialById(id?: string | null): MaterialSpec | null {
+  if (!id) return null;
+  const pid = String(id).toLowerCase();
+  return materialCatalog.find((m) => String(m.id).toLowerCase() === pid) ?? null;
+}
+
 // Profili Iniezione (3 step)
 export function buildInjectionProfile(vel: number): { step1: number; step2: number; step3: number } {
   return {
@@ -276,6 +314,56 @@ export function buildPackProfile(packPress: number): { step1: number; step2: num
 export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
   const machine: any = (input as any).machine ?? {};
   const mat: any = (input as any).material ?? {};
+
+  // If caller passed only a material id, resolve from catalog
+  const providedMatId = String((mat && mat.id) || (input as any).materialId || '').toLowerCase();
+  if (providedMatId) {
+    const found = getMaterialById(providedMatId);
+    if (found) {
+      // map catalog to expected mat fields used below
+      mat.id = found.id;
+      mat.nome = found.nome ?? found.id;
+      mat.tempCylStart_C = found.tempCylStart_C;
+      mat.tempCylEnd_C = found.tempCylEnd_C;
+      mat.tempMold_C = found.tempMold_C;
+      mat.density_g_cm3 = found.density_g_cm3;
+      mat.viscosityFactor = found.viscosityFactor ?? 1;
+      mat.viscosity = (mat.viscosityFactor <= 0.85) ? 'low' : (mat.viscosityFactor <= 1.1) ? 'medium' : 'high';
+      mat.crystalline = /(PA|PBT|PPS)/i.test(found.id);
+    }
+  }
+
+  // If machine id matches known Arburg catalog, populate machine defaults conservatively
+  const machineId = String(machine.id || '').toLowerCase();
+  if (machineId) {
+    const pm = (ARBURG_PRESS_CATALOG || []).find((p: any) => String(p.id || '').toLowerCase() === machineId);
+    if (pm) {
+        machine.tonnellaggio_kN = machine.tonnellaggio_kN ?? pm.clampForce_kN;
+        // prefer explicit machine values, otherwise derive from catalog screw variant (closest match or first available)
+        let chosenVariant: any = null;
+        if (pm.injectionUnits && pm.injectionUnits.length > 0) {
+          // if user provided a screwDiameter, try to find exact match across all units
+          if (machine.screwDiameter_mm) {
+            for (const iu of pm.injectionUnits) {
+              const v = (iu.screwVariants || []).find((s: any) => s.screwDiameter_mm === machine.screwDiameter_mm);
+              if (v) { chosenVariant = v; break; }
+            }
+          }
+          // fallback to first available variant
+          if (!chosenVariant) {
+            const firstIU = pm.injectionUnits[0];
+            chosenVariant = (firstIU.screwVariants && firstIU.screwVariants[0]) || null;
+          }
+        }
+
+        if (chosenVariant) {
+          if (!machine.maxInjectionPressure_bar) machine.maxInjectionPressure_bar = chosenVariant.maxInjectionPressure_bar;
+          if (!machine.maxInjectionSpeed_cm3_s) machine.maxInjectionSpeed_cm3_s = chosenVariant.maxInjectionFlow_cm3_s;
+          if (!machine.maxShotVolume_cm3) machine.maxShotVolume_cm3 = chosenVariant.maxShotVolume_cm3;
+          if (!machine.screwDiameter_mm) machine.screwDiameter_mm = chosenVariant.screwDiameter_mm;
+        }
+    }
+  }
 
   const pressProfile: PressProfile = {
     id: machine.id ?? 'unknown',

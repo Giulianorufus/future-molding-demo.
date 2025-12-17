@@ -2,6 +2,7 @@
 // This file is intended to be used as a Vite module worker: new Worker(new URL('./cadWorker.ts', import.meta.url), { type: 'module' })
 
 import { getOcct } from './occtInit';
+import { cadFallbackResult } from './cadFallback';
 
 async function parseBuffer(dataBuf: ArrayBuffer, fileName: string, ext: string) {
   const data = new Uint8Array(dataBuf);
@@ -79,7 +80,6 @@ self.addEventListener('message', async (ev: MessageEvent) => {
       progress = Math.min(95, progress + Math.floor(Math.random() * 10) + 5);
       try { (self as any).postMessage({ id, progress, status: 'parsing' }); } catch (e) { /* ignore */ }
     }, 700);
-
     const r = await parseBuffer(arrayBuffer, fileName, ext);
     clearInterval(heartbeat);
     // Final progress
@@ -96,7 +96,14 @@ self.addEventListener('message', async (ev: MessageEvent) => {
     // post success
     (self as any).postMessage({ id, ok: true, result: r }, transfer);
   } catch (err: any) {
-    try { (self as any).postMessage({ id, progress: 0, status: 'error' }); } catch (e) {}
-    (self as any).postMessage({ id, ok: false, error: String(err?.message ?? err) });
+    try { (self as any).postMessage({ id, progress: 0, status: 'fallback' }); } catch (e) {}
+    // Use fallback result so worker consumers always receive a usable payload
+    try {
+      const fb = cadFallbackResult(err);
+      const result: any = { meshes: [], features: ['fallback'], volume_cm3: fb.volume_cm3, area_cm2: fb.projectedArea_cm2 };
+      (self as any).postMessage({ id, ok: true, result });
+    } catch (e) {
+      (self as any).postMessage({ id, ok: false, error: String(err?.message ?? err) });
+    }
   }
 });

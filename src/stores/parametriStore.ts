@@ -320,6 +320,7 @@ if (typeof window !== 'undefined') {
           // swallow; ricalcola already sets error
         }
       }, debounceMs)
+      try { (timer as any)?.unref?.(); } catch (_) {}
     }
 
     // Subscribe to stores; debounce guards against too-frequent calls

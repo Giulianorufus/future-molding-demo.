@@ -4,6 +4,9 @@
 import { getOcct } from './occtInit';
 import { cadFallbackResult } from './cadFallback';
 
+// module-level ref to allow external stop requests to clear heartbeat
+let _lastHeartbeat: any = null;
+
 async function parseBuffer(dataBuf: ArrayBuffer, fileName: string, ext: string) {
   const data = new Uint8Array(dataBuf);
   const occt = await getOcct();
@@ -80,8 +83,11 @@ self.addEventListener('message', async (ev: MessageEvent) => {
       progress = Math.min(95, progress + Math.floor(Math.random() * 10) + 5);
       try { (self as any).postMessage({ id, progress, status: 'parsing' }); } catch (e) { /* ignore */ }
     }, 700);
+    _lastHeartbeat = heartbeat;
+    try { (heartbeat as any)?.unref?.(); } catch (_) {}
     const r = await parseBuffer(arrayBuffer, fileName, ext);
-    clearInterval(heartbeat);
+    try { clearInterval(heartbeat); } catch (_) {}
+    _lastHeartbeat = null;
     // Final progress
     try { (self as any).postMessage({ id, progress: 100, status: 'done' }); } catch (e) { /* ignore */ }
     // transfer typed arrays back if present
@@ -97,6 +103,7 @@ self.addEventListener('message', async (ev: MessageEvent) => {
     (self as any).postMessage({ id, ok: true, result: r }, transfer);
   } catch (err: any) {
     try { (self as any).postMessage({ id, progress: 0, status: 'fallback' }); } catch (e) {}
+    try { if (_lastHeartbeat) { clearInterval(_lastHeartbeat); _lastHeartbeat = null } } catch (_) {}
     // Use fallback result so worker consumers always receive a usable payload
     try {
       const fb = cadFallbackResult(err);
@@ -106,4 +113,14 @@ self.addEventListener('message', async (ev: MessageEvent) => {
       (self as any).postMessage({ id, ok: false, error: String(err?.message ?? err) });
     }
   }
+});
+
+// Listener to allow external stop requests to clear heartbeat (safe no-op if none)
+self.addEventListener('message', (ev: MessageEvent) => {
+  try {
+    if (ev?.data?.type === 'STOP') {
+      try { if (_lastHeartbeat) { clearInterval(_lastHeartbeat); _lastHeartbeat = null } } catch (_) {}
+      try { (self as any).postMessage({ ok: true, status: 'stopped' }); } catch (_) {}
+    }
+  } catch (_) {}
 });

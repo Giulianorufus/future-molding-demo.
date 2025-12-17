@@ -39,11 +39,19 @@ async function parseBuffer(dataBuf: ArrayBuffer, fileName: string, ext: string) 
   }
 
   if (ext === 'step' || ext === 'stp') {
-    const fn = pickOcctFn(occt, ['ReadStepFile', 'readStepFile', 'ReadSTEPFile', 'readSTEPFile']);
-    if (!fn) throw new Error('OCCT STEP reader not available');
-    const res = await callOcctReader(fn, data, fileName || 'model.step');
-    const meshes = normalizeMeshes(res?.meshes ?? null);
-    return { meshes };
+    try {
+      const { readSTEP } = await import('./occt/occtClient');
+      const res = await readSTEP(data);
+      const meshes = normalizeMeshes(res?.meshes ?? null);
+      return { meshes };
+    } catch (err) {
+      // fallback to direct occt readers
+      const fn = pickOcctFn(occt, ['ReadStepFile', 'readStepFile', 'ReadSTEPFile', 'readSTEPFile']);
+      if (!fn) throw new Error('OCCT STEP reader not available');
+      const res = await callOcctReader(fn, data, fileName || 'model.step');
+      const meshes = normalizeMeshes(res?.meshes ?? null);
+      return { meshes };
+    }
   }
   if (ext === 'iges' || ext === 'igs') {
     const fn = pickOcctFn(occt, ['ReadIgesFile', 'readIgesFile', 'ReadIGESFile', 'readIGESFile']);

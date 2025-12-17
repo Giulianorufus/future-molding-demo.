@@ -1,20 +1,21 @@
-const RUN_CAD = false;
+const RUN_CAD_INT =
+  process.env.RUN_CAD_INTEGRATION === "1" ||
+  process.env.RUN_CAD_INTEGRATION === "true";
 
-const describeCad = describe.skip;
+const describeCadInt = RUN_CAD_INT ? describe : describe.skip;
 
-describeCad("occt-import-js (real integration)", () => {
+describeCadInt("occt-import-js (real integration)", () => {
   it("parses a STEP fixture via parseCAD (no mock)", async () => {
     const STRICT =
       process.env.CAD_STRICT === "1" ||
       process.env.CAD_STRICT === "true";
 
-    const { parseCAD } = await import("../cadParser");
+    const { parseCAD } = await import('../../lib/cadParser');
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
 
     const stepPath = path.join(__dirname, "fixtures", "cad", "box_20mm.step");
 
-    // Use the STEP fixture (we require a real STEP for strict integration runs)
     const fixtureBuf = await fs.readFile(stepPath);
     const uint8 = new Uint8Array(fixtureBuf.buffer, fixtureBuf.byteOffset, fixtureBuf.byteLength);
     const fileLike = {
@@ -27,19 +28,12 @@ describeCad("occt-import-js (real integration)", () => {
 
     expect(out).toBeTruthy();
     expect(Array.isArray(out.features)).toBe(true);
-    // We used the STEP fixture for this integration test
-    const usedStep = true;
 
-    // Check whether OCCT actually exposes a reader for the chosen format; if not, treat as non-real (skip strict)
     let occtHasReader = false;
     try {
-      const occtInit = await import("../occtInit");
-      const occt = await occtInit.getOcct();
-      // TEMP LOG: list occt reader-like functions to debug strict failures
-      try {
-        const fnNames = Object.keys(occt || {}).filter((k) => /read/i.test(k));
-      } catch (_) {}
-      if (usedStep) {
+      const occtClient = await import('../../lib/occt/occtClient');
+      const occt = await occtClient.getOCCT();
+      if (occt) {
         occtHasReader = !!(
           occt.ReadStepFile ||
           occt.readStepFile ||
@@ -53,14 +47,12 @@ describeCad("occt-import-js (real integration)", () => {
       occtHasReader = false;
     }
 
-    const realFixture = usedStep && occtHasReader;
+    const realFixture = occtHasReader;
 
-    // If OCCT returned the fail-soft marker and we have a real fixture, FAIL hard.
     if ((out.features || []).includes("occt-unavailable")) {
       const msg = "OCCT integration failed: parseCAD returned fail-soft (occt-unavailable).";
       if (STRICT) throw new Error(msg);
       if (realFixture) {
-        // if we have a real fixture but not strict, warn and return so developers aren't blocked
         console.warn(msg);
         return;
       }
@@ -68,7 +60,6 @@ describeCad("occt-import-js (real integration)", () => {
       return;
     }
 
-    // Otherwise, assert useful geometry
     expect(out.volume_cm3).toBeGreaterThan(0);
     expect(out.area_cm2).toBeGreaterThan(0);
     expect(out.meshes && out.meshes.length).toBeGreaterThan(0);

@@ -1,8 +1,10 @@
 import { PressProfile } from "./pressProfiles";
 import { MaterialInfo } from "./materialData";
 import { recommendedClampForceTon } from "./clampForce";
-import { materialCatalog, type MaterialSpec, getMaterialInput } from "../data/materialCatalog";
+import { materialCatalog, getMaterialInput } from "../data/materialCatalog";
+import type { MaterialProfile } from "@/types/material";
 import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
+import { materialEffects } from "../lib/calc/materialEffects";
 import { parseOverride } from "../utils/overrides";
 import { enforceSafety } from "./safetyChecks";
 import { useDrawingStore } from "../stores/drawingStore";
@@ -122,8 +124,23 @@ export function calculateParameters(input: CalcInput): CalcResult {
   let screwRpm = screwDiameter <= 18 ? 250 : screwDiameter <= 22 ? 220 : screwDiameter <= 25 ? 200 : 180;
   let coolingTimeSec = material.crystalline ? 22 : 18;
 
+  // Apply material effects multipliers if provided (attached by caller)
+  try {
+    const matFx = (material as any)._materialEffects;
+    if (matFx && matFx.multipliers) {
+      const m = matFx.multipliers;
+      injectionSpeedCm3s = Math.round(injectionSpeedCm3s * (m.flow ?? 1));
+      // pressure multiplier will be applied to holdingPressureBar where appropriate (after its init)
+      coolingTimeSec = Math.round(coolingTimeSec * (m.cooling ?? 1));
+    }
+  } catch (_) {
+    // non-blocking
+  }
+
   const projArea = input.projAreaCm2;
-  let clampForceTon = typeof projArea === "number" && projArea > 0 ? recommendedClampForceTon(projArea, material.family) : Math.round((press.clampForceTon || 0) * 0.7);
+  const effectivePress: any = press ?? (input as any).machine ?? {};
+  const clampBaseTon = effectivePress.clampForceTon ?? (effectivePress.tonnellaggio_kN ? Math.round(effectivePress.tonnellaggio_kN / 9.80665) : 0);
+  let clampForceTon = typeof projArea === "number" && projArea > 0 ? recommendedClampForceTon(projArea, material.family) : Math.round((clampBaseTon || 0) * 0.7);
 
   function parsePercentOrNumber(value: string | number) { return parseOverride(value as any); }
 
@@ -170,13 +187,26 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const pieceVol = typeof input.volumeCm3 === 'number' && input.volumeCm3 > 0 ? input.volumeCm3 : (typeof input.projAreaCm2 === 'number' && input.projAreaCm2 > 0 ? Math.round(input.projAreaCm2 * 0.2) : 10);
   const runnerVol = Math.max(1, Math.round(pieceVol * 0.05));
   const totalShot = Math.round(pieceVol + runnerVol);
-
+  
   const warnings: string[] = [];
-  const pm: any = press as any;
-  if (pm?.maxSpeedCm3s && injectionSpeedCm3s > pm.maxSpeedCm3s) warnings.push(`Velocità iniezione ${injectionSpeedCm3s} cm³/s > max pressa ${pm.maxSpeedCm3s} cm³/s`);
-  if (pm?.maxPressureBar && holdingPressureBar > pm.maxPressureBar) warnings.push(`Pressione tenuta ${holdingPressureBar} bar > max pressa ${pm.maxPressureBar} bar`);
-  if (pm?.shotVolumeCm3 && totalShot > pm.shotVolumeCm3) warnings.push(`Shot stimato ${totalShot} cm³ > capacità vite pressa ${pm.shotVolumeCm3} cm³`);
-  if (clampForceTon > (press.clampForceTon || 0)) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità pressa ${press.clampForceTon} ton`);
+  // merge material effects warnings/assumptions (if any)
+  try {
+    const matFx = (material as any)._materialEffects;
+    if (matFx) {
+      if (Array.isArray(matFx.warnings) && matFx.warnings.length) warnings.push(...matFx.warnings);
+      if (Array.isArray(matFx.assumptions) && matFx.assumptions.length) warnings.push(...matFx.assumptions);
+    }
+  } catch (_) {
+    // ignore
+  }
+    const ep: any = effectivePress as any;
+    const maxSpeed = ep?.maxInjectionSpeed_cm3_s ?? ep?.maxInjectionSpeed_cm3s ?? ep?.maxSpeedCm3s ?? ep?.maxSpeed_cm3s ?? ep?.maxSpeedCm3s;
+    if (maxSpeed && injectionSpeedCm3s > maxSpeed) warnings.push(`Velocità iniezione ${injectionSpeedCm3s} cm³/s > max pressa ${maxSpeed} cm³/s`);
+    const maxPressure = ep?.maxInjectionPressure_bar ?? ep?.maxPressureBar ?? ep?.maxPressure_bar;
+    if (maxPressure && holdingPressureBar > maxPressure) warnings.push(`Pressione tenuta ${holdingPressureBar} bar > max pressa ${maxPressure} bar`);
+    const shotCap = ep?.maxShotVolume_cm3 ?? ep?.shotVolumeCm3 ?? ep?.maxShotVolumeCm3;
+    if (shotCap && totalShot > shotCap) warnings.push(`Shot stimato ${totalShot} cm³ > capacità vite pressa ${shotCap} cm³`);
+    if (clampForceTon > (ep?.clampForceTon || 0)) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità pressa ${ep?.clampForceTon} ton`);
 
   const vpVolume = Math.max(1, Math.round(pieceVol * 0.95));
   const packTime = Math.max(1, Math.round((pieceVol || 1) * 0.5));
@@ -194,10 +224,11 @@ export function calculateParameters(input: CalcInput): CalcResult {
   try {
     const shotVol = (pieceVolFromStore || pieceVol) || 0;
     const requiredFlow_cm3_s = shotVol / Math.max(1e-6, fillTime_s);
-    const maxFlow = pm?.maxSpeedCm3s ?? (press?.maxSpeedCm3s ?? undefined);
-    if (typeof maxFlow === 'number' && Number.isFinite(maxFlow) && requiredFlow_cm3_s > maxFlow) {
+    const maxFlow = (effectivePress as any)?.maxInjectionSpeed_cm3_s ?? (effectivePress as any)?.maxInjectionSpeed_cm3s ?? (effectivePress as any)?.maxSpeedCm3s ?? (effectivePress as any)?.maxSpeed_cm3s ?? undefined;
+    if (typeof maxFlow === 'number' && Number.isFinite(maxFlow) && (requiredFlow_cm3_s > maxFlow || suggestedInjectionSpeedCm3s > maxFlow || injectionSpeedCm3s > maxFlow)) {
       const cappedFlow = maxFlow;
-      warnings.push(`Limited by press maxInjectionFlow (${cappedFlow} cm³/s)`);
+      // put the machine-cap warning first so it appears in top suggestions
+      warnings.unshift(`Limited by press maxInjectionFlow (${cappedFlow} cm³/s)`);
 
       // adjust fill time to match capped flow
       fillTime_s = Math.max(0.01, Math.round((shotVol / cappedFlow) * 100) / 100);
@@ -218,10 +249,11 @@ export function calculateParameters(input: CalcInput): CalcResult {
   } catch (e) {
     // non-blocking: keep original values on error
   }
+  
   const vpRes: VPResult = { vpVolumeCm3: vpVolume, switchVolumeCm3: Math.max(1, Math.round((pieceVolFromStore || pieceVol) * 0.6)) };
   const packRes: PackResult = { packPressureBar: Math.round((material as any).density_g_cm3 ?? 1 * Math.max(20, Math.min(200, (pieceVolFromStore || pieceVol) * 0.5))), packTimeSec: packTime };
   const coolingFromThickness = thickness ? Math.round((material.crystalline ? 22 : 18) * (1 + Math.pow((thickness / 3), 1.4) * 0.25)) : (material.crystalline ? 22 : 18);
-  const tonnage = (() => { const area = (projAreaFromStore || projArea || 10); const required = Math.max(1, Math.round(area * 0.01 * 100) / 100); const pressAdequate = (press.clampForceTon || 0) >= required; return { requiredTonnage_t: required, pressAdequate }; })();
+  const tonnage = (() => { const area = (projAreaFromStore || projArea || 10); const required = Math.max(1, Math.round(area * 0.01 * 100) / 100); const pressAdequate = (press?.clampForceTon || 0) >= required; return { requiredTonnage_t: required, pressAdequate }; })();
   const tempSug: TemperatureSuggestion = { suggestedMeltTempC: material.meltMin, suggestedMoldTempC: finalMoldTemp };
   const suggestions: CalcSuggestions = { notes: warnings.slice(0, 3) };
 
@@ -229,7 +261,15 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const geom_area = (geometry as any)?.areaProiettata ?? (geometry as any)?.areaProiettata_cm2 ?? input.projAreaCm2 ?? projArea;
   const geom_vol = (geometry as any)?.volumeTotale ?? (geometry as any)?.volumePezzo_cm3 ?? input.volumeCm3 ?? pieceVol;
 
-  const velIniezione = hCalcInjectionSpeed(Number(geom_spess) || 0, material as any);
+  let velIniezione = hCalcInjectionSpeed(Number(geom_spess) || 0, material as any);
+  // clamp computed velocity to suggested/capped injection speed if applied
+  try {
+    if (typeof suggestedInjectionSpeedCm3s === 'number' && Number.isFinite(suggestedInjectionSpeedCm3s)) {
+      velIniezione = Math.min(velIniezione, suggestedInjectionSpeedCm3s);
+    }
+  } catch (_) {
+    // ignore
+  }
   const pressioneIniezione = hCalcInjectionPressure(Number(geom_area) || 0, velIniezione, material as any);
   const fillTime = hCalcFillTime(Number(geom_vol) || 0, velIniezione);
   const vp = hCalcVP(Number(geom_vol) || 0, material as any);
@@ -238,7 +278,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const tonnellaggio = hCalcTonnellaggio(Number(geom_area) || 0, pressioneIniezione);
   const temperature = hCalcTemperatures(material as any);
 
-  return {
+  const result: any = {
     meltTempZones,
     moldTemp: finalMoldTemp,
     injectionSpeedCm3s,
@@ -276,10 +316,13 @@ export function calculateParameters(input: CalcInput): CalcResult {
     tonnellaggio,
     temperature,
   };
+  // italian alias for callers/tests that expect it
+  result.suggerimenti = suggestions.notes;
+  return result as CalcResult;
 }
 
 // helper per recuperare materiale dal catalogo (punto unico di verità)
-export function getMaterialById(id?: string | null): MaterialSpec | null {
+export function getMaterialById(id?: string | null): MaterialProfile | null {
   if (!id) return null;
   const pid = String(id).toLowerCase();
   return materialCatalog.find((m) => String(m.id).toLowerCase() === pid) ?? null;
@@ -320,14 +363,14 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
   if (providedMatId) {
     const found = getMaterialById(providedMatId);
     if (found) {
-      // map catalog to expected mat fields used below
+      // map typed MaterialProfile to legacy material shape used elsewhere
       mat.id = found.id;
-      mat.nome = found.nome ?? found.id;
-      mat.tempCylStart_C = found.tempCylStart_C;
-      mat.tempCylEnd_C = found.tempCylEnd_C;
-      mat.tempMold_C = found.tempMold_C;
-      mat.density_g_cm3 = found.density_g_cm3;
-      mat.viscosityFactor = found.viscosityFactor ?? 1;
+      mat.nome = (found as any).name ?? found.id;
+      mat.tempCylStart_C = (found as any).meltTempC?.min ?? (found as any).meltMin ?? null;
+      mat.tempCylEnd_C = (found as any).meltTempC?.max ?? (found as any).meltMax ?? null;
+      mat.tempMold_C = (found as any).moldTempC?.default ?? (found as any).moldMin ?? null;
+      mat.density_g_cm3 = (found as any).density_g_cm3 ?? 1.0;
+      mat.viscosityFactor = (found as any).flowFactor ?? 1;
       mat.viscosity = (mat.viscosityFactor <= 0.85) ? 'low' : (mat.viscosityFactor <= 1.1) ? 'medium' : 'high';
       mat.crystalline = /(PA|PBT|PPS)/i.test(found.id);
     }
@@ -393,6 +436,15 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
     crystalline: family === 'PP' || family === 'PA66GF',
     density_g_cm3: mat.density_g_cm3,
   };
+
+  // attach materialEffects (computed from typed profile when available) so calculateParameters can apply multipliers/warnings
+  try {
+    const typed = getMaterialById(String(mat.id || '').toLowerCase());
+    const fx = materialEffects(typed as any || null);
+    if (fx) (materialInfo as any)._materialEffects = fx;
+  } catch (_) {
+    // ignore
+  }
 
   const geometry = (input as any).geometry ?? {};
 

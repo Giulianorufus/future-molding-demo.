@@ -1,4 +1,4 @@
-import { calcolaParametri } from '../../calcEngine'
+import { calculateParameters } from '../calcEngine'
 
 describe('injection flow clamp', () => {
   test('caps injection flow by machine maxInjectionSpeed_cm3_s and emits warning', () => {
@@ -22,7 +22,7 @@ describe('injection flow clamp', () => {
       options: { debug: false },
     }
 
-    const out: any = calcolaParametri(input)
+    const out: any = calculateParameters(input)
 
     expect(out).toBeDefined()
     // suggestions/warnings must be present and contain clamp message

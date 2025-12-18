@@ -1,6 +1,6 @@
 import React from 'react'
 import { useMaterialStore } from '@/stores/materialStore'
-import materialCatalog from '@/data/materialCatalog'
+import { materialCatalog } from '@/data/materialCatalog'
 
 export default function Step3Material({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
   const { catalog, selectedMaterialId, setCatalog, selectMaterial } = useMaterialStore()

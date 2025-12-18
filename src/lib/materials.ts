@@ -1,4 +1,4 @@
-import materialCatalog, { getMaterialInput } from '../data/materialCatalog';
+import { materialCatalog, getMaterialInput } from '../data/materialCatalog';
 
 export interface MaterialData {
   code: string;
@@ -21,7 +21,7 @@ export interface MaterialData {
  */
 export function getMaterialByCode(code: string): MaterialData | null {
   if (!code) return null;
-  const m = getMaterialInput(code);
+  const m: any = getMaterialInput(code);
   if (!m) return null;
   // Adapt materialCatalog entry to the legacy MaterialData shape as best-effort
   return ({

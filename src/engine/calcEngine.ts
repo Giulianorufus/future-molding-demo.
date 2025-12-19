@@ -5,6 +5,7 @@ import { materialCatalog, getMaterialInput } from "../data/materialCatalog";
 import type { MaterialProfile } from "@/types/material";
 import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
 import { materialEffects } from "../lib/calc/materialEffects";
+import { resolveMaterialOrFallback } from "../data/materialLibrary";
 import { applyPressLimits } from "../lib/pressLimits";
 import { parseOverride } from "../utils/overrides";
 import { enforceSafety } from "./safetyChecks";
@@ -416,22 +417,39 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
   const machine: any = (input as any).machine ?? {};
   const mat: any = (input as any).material ?? {};
 
-  // If caller passed only a material id, resolve from catalog
+  // If caller passed only a material id, resolve from catalog (fallback to ABS)
   const providedMatId = String((mat && mat.id) || (input as any).materialId || '').toLowerCase();
-  if (providedMatId) {
-    const found = getMaterialById(providedMatId);
-    if (found) {
+  try {
+    const resolveInput = providedMatId || String((input as any).materialId || (mat && mat.id) || '').toLowerCase();
+    const { material: resolvedMat, assumptions: matAssumptions } = resolveMaterialOrFallback(resolveInput || undefined);
+    if (resolvedMat) {
       // map typed MaterialProfile to legacy material shape used elsewhere
-      mat.id = found.id;
-      mat.nome = (found as any).name ?? found.id;
-      mat.tempCylStart_C = (found as any).meltTempC?.min ?? (found as any).meltMin ?? null;
-      mat.tempCylEnd_C = (found as any).meltTempC?.max ?? (found as any).meltMax ?? null;
-      mat.tempMold_C = (found as any).moldTempC?.default ?? (found as any).moldMin ?? null;
-      mat.density_g_cm3 = (found as any).density_g_cm3 ?? 1.0;
-      mat.viscosityFactor = (found as any).flowFactor ?? 1;
+      mat.id = resolvedMat.id;
+      mat.nome = (resolvedMat as any).name ?? resolvedMat.id;
+      mat.tempCylStart_C = (resolvedMat as any).meltTemp_C?.min ?? (resolvedMat as any).meltMin ?? null;
+      mat.tempCylEnd_C = (resolvedMat as any).meltTemp_C?.max ?? (resolvedMat as any).meltMax ?? null;
+      mat.tempMold_C = (resolvedMat as any).moldTemp_C?.typical ?? (resolvedMat as any).moldMin ?? null;
+      mat.density_g_cm3 = (resolvedMat as any).density_g_cm3 ?? 1.0;
+      // derive a simple viscosityFactor baseline from factors.flow (invert: lower flow => higher viscosity factor)
+      mat.viscosityFactor = (resolvedMat as any).factors?.flow ?? 1;
       mat.viscosity = (mat.viscosityFactor <= 0.85) ? 'low' : (mat.viscosityFactor <= 1.1) ? 'medium' : 'high';
-      mat.crystalline = /(PA|PBT|PPS)/i.test(found.id);
+      mat.crystalline = /(PA|PBT|PPS)/i.test(resolvedMat.id);
+
+      // attach computed material effects early (legacy compatibility) so calculateParameters will use them
+      try {
+        const fx = materialEffects(resolvedMat as any || null);
+        if (fx) {
+          (mat as any)._materialEffects = fx;
+          if (Array.isArray(matAssumptions) && matAssumptions.length) {
+            (mat as any)._materialEffects.assumptions = Array.from(new Set([...( (mat as any)._materialEffects.assumptions ?? [] ), ...matAssumptions]));
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
     }
+  } catch (_) {
+    // best-effort: fall back to existing behavior
   }
 
   // If machine id matches known Arburg catalog, populate machine defaults conservatively

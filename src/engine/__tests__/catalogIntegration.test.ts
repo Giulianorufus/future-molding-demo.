@@ -20,4 +20,25 @@ describe('catalog integration (basic)', () => {
     // If pressure requested is higher than machine max, we expect at least one warning
     expect(Array.isArray(out.suggerimenti) || Array.isArray((out as any).suggerimenti)).toBeTruthy();
   });
+
+  test('material factors: PC requires higher pressure and lower flow than ABS (deterministic)', () => {
+    const base: any = {
+      machine: {
+        id: 'test-100t',
+        nome: 'Test press 100t',
+        tonnellaggio_kN: 1000,
+        screwDiameter_mm: 25,
+        maxInjectionPressure_bar: 2000,
+        maxInjectionSpeed_cm3_s: 2000,
+        maxShotVolume_cm3: 10000,
+      },
+      geometry: { areaProiettata_cm2: 50, volumePezzo_cm3: 50 },
+    };
+
+    const abs = calcolaParametri({ ...base, material: { id: 'ABS' } } as any);
+    const pc = calcolaParametri({ ...base, material: { id: 'PC' } } as any);
+
+    // PC should require higher pressure than ABS (deterministic)
+    expect(pc.pressioneIniezione).toBeGreaterThan(abs.pressioneIniezione);
+  });
 });

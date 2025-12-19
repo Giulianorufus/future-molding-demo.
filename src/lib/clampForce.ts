@@ -1,23 +1,26 @@
 // src/lib/clampForce.ts
 
 export type ClampForceInput = {
-  projectedArea_cm2: number;   // area proiettata (cm²)
-  cavityPressure_bar: number;  // pressione cavità stimata (bar)
-  safetyFactor?: number;       // 1.0–1.4 tipico
+  projectedArea_cm2: number; // area proiettata (cm²)
+  cavityPressure_bar: number; // pressione cavità stimata (bar)
+  safetyFactor?: number; // default 1.10
 };
 
 export type ClampForceResult = {
   projectedArea_cm2: number;
-  clampForceRequired_kN: number;        // kN richiesti
-  clampPressureRequired_g_cm2: number;  // g/cm² richiesti
+  cavityPressure_bar: number;
+  safetyFactor: number;
+  clampForceRequired_kN: number; // kN richiesti
+  clampForceRequired_ton: number; // ton richiesti (metric ton-force)
+  clampPressureRequired_g_cm2: number; // g/cm² richiesti
 };
 
-const N_PER_KN = 1000;
-const N_PER_KGF = 9.80665;
-const G_PER_KGF = 1000;
+export type ClampStatus = "ok" | "borderline" | "fail";
 
-// 1 kN -> g (kgf*1000)
-const G_PER_KN = (N_PER_KN / N_PER_KGF) * G_PER_KGF; // ~101971.621
+const N_PER_KN = 1000;
+const KN_PER_TONF = 9.80665; // kN per ton-force
+// gram per kN (approx): 1 kN -> (1/9.80665) kgf -> *1000 g
+const G_PER_KN = 1000 / 0.00980665; // ≈101971.621
 
 /**
  * 1 bar = 0.1 N/mm²
@@ -25,22 +28,29 @@ const G_PER_KN = (N_PER_KN / N_PER_KGF) * G_PER_KGF; // ~101971.621
  * Forza N = bar*0.1 * cm²*100 = bar*10*cm²
  * Forza kN = (bar*10*cm²)/1000 = bar*0.01*cm²
  */
-export function computeClampForce({
-  projectedArea_cm2,
-  cavityPressure_bar,
-  safetyFactor = 1.15,
-}: ClampForceInput): ClampForceResult {
-  const area = Math.max(0, projectedArea_cm2);
-  const p = Math.max(0, cavityPressure_bar);
-  const sf = Math.max(0.9, Math.min(2.0, safetyFactor));
+export function computeClampForce(args: {
+  projectedArea_cm2: number;
+  cavityPressure_bar: number;
+  safetyFactor?: number;
+}): ClampForceResult {
+  const area = Math.max(0, Number(args.projectedArea_cm2) || 0);
+  const pBar = Math.max(0, Number(args.cavityPressure_bar) || 0);
+  const sf = Number.isFinite(args.safetyFactor as number) ? (args.safetyFactor as number) : 1.1;
 
-  const clampForceRequired_kN = p * 0.01 * area * sf;
+  // F_kN = p(bar) * area(cm2) * 0.01 * sf
+  const clampForceRequired_kN = area > 0 ? pBar * area * 0.01 * sf : 0;
+
+  const clampForceRequired_ton = clampForceRequired_kN / KN_PER_TONF;
+
   const clampPressureRequired_g_cm2 =
     area > 0 ? (clampForceRequired_kN * G_PER_KN) / area : 0;
 
   return {
     projectedArea_cm2: area,
+    cavityPressure_bar: pBar,
+    safetyFactor: sf,
     clampForceRequired_kN,
+    clampForceRequired_ton,
     clampPressureRequired_g_cm2,
   };
 }

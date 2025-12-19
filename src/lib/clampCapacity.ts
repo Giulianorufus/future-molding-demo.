@@ -1,3 +1,19 @@
+// src/lib/clampCapacity.ts
+import type { ClampStatus } from "./clampForce";
+
+export function evaluateClampCapacity(args: {
+  required_kN: number;
+  available_kN: number;
+}) {
+  const required = Math.max(0, Number(args.required_kN) || 0);
+  const available = Math.max(0, Number(args.available_kN) || 0);
+
+  const utilization_pct = available > 0 ? (required / available) * 100 : 0;
+
+  const status: ClampStatus = utilization_pct > 100 ? "fail" : utilization_pct >= 90 ? "borderline" : "ok";
+
+  return { required_kN: required, available_kN: available, utilization_pct, status };
+}
 type ClampCapacity = {
   clampForceAvailable_kN: number
   usableClampForce_kN: number

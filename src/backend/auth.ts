@@ -3,14 +3,14 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 dotenv.config();
 
-if (!process.env.JWT_SECRET) {
-  throw new Error("Missing JWT_SECRET");
+export function requireJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("Missing JWT_SECRET");
+  return secret;
 }
 
-const SECRET = process.env.JWT_SECRET as string;
-
 export function generateToken(payload: object): string {
-  return jwt.sign(payload, SECRET, { expiresIn: "12h" });
+  return jwt.sign(payload, requireJwtSecret(), { expiresIn: "12h" });
 }
 
 export async function hashPassword(password: string) {
@@ -28,7 +28,7 @@ export function authMiddleware(req: any, res: any, next: any) {
 
   const token = header.split(" ")[1];
   try {
-    const decoded = jwt.verify(token, SECRET);
+    const decoded = jwt.verify(token, requireJwtSecret());
     (req as any).user = decoded;
     next();
   } catch {

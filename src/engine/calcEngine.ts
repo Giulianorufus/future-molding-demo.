@@ -1,6 +1,8 @@
 import { PressProfile } from "./pressProfiles";
 import { MaterialInfo } from "./materialData";
 import { recommendedClampForceTon } from "./clampForce";
+import { computeClampForce } from "../lib/clampForce";
+import { evaluateClampCapacity } from "../lib/clampCapacity";
 import { materialCatalog, getMaterialInput } from "../data/materialCatalog";
 import type { MaterialProfile } from "@/types/material";
 import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
@@ -200,6 +202,38 @@ export function calculateParameters(input: CalcInput): CalcResult {
     } else if (typeof input.clampForceOverride === 'number') clampForceTon = Math.round(input.clampForceOverride as number);
   }
 
+  // Prepare placeholders for optional g/cm²-based clamp evaluation (we'll merge into `result` later)
+  let __cf_for_clamp: any = null;
+  let __cap_for_clamp: any = null;
+  let __clamp_local_warnings: string[] = [];
+  try {
+    const area_cm2 = (typeof projArea === "number" && projArea > 0) ? projArea : undefined;
+    const cavity_bar = ((input as any)?.tunedCavityPressure_bar as number | undefined) ?? ((input as any)?.cavityPressure_bar as number | undefined);
+
+    if (area_cm2 && typeof cavity_bar === 'number' && cavity_bar > 0) {
+      const cf = computeClampForce({ projectedArea_cm2: area_cm2, cavityPressure_bar: cavity_bar, safetyFactor: 1.1 });
+
+      // round ton for legacy clampForceTon
+      clampForceTon = Math.round(cf.clampForceRequired_ton);
+
+      // compute press available kN (try different keys)
+      const pressClamp_kN = (effectivePress as any)?.clampForce_kN ?? ((effectivePress as any)?.clampForceTon ? (effectivePress as any).clampForceTon * 9.80665 : 0);
+
+      const cap = evaluateClampCapacity({ required_kN: cf.clampForceRequired_kN, available_kN: pressClamp_kN || 0 });
+
+      __cf_for_clamp = cf;
+      __cap_for_clamp = cap;
+
+      if (cap.status === "borderline") {
+        __clamp_local_warnings.push(`Forza chiusura borderline: ${cap.utilization_pct.toFixed(1)}% della capacità pressa`);
+      } else if (cap.status === "fail") {
+        __clamp_local_warnings.push(`Forza chiusura insufficiente: richiesto ${cf.clampForceRequired_ton.toFixed(1)} ton > capacità pressa`);
+      }
+    }
+  } catch (_) {
+    // non-blocking: keep existing clampForceTon
+  }
+
   const pieceVol = typeof input.volumeCm3 === 'number' && input.volumeCm3 > 0 ? input.volumeCm3 : (typeof input.projAreaCm2 === 'number' && input.projAreaCm2 > 0 ? Math.round(input.projAreaCm2 * 0.2) : 10);
   const runnerVol = Math.max(1, Math.round(pieceVol * 0.05));
   const totalShot = Math.round(pieceVol + runnerVol);
@@ -346,6 +380,18 @@ export function calculateParameters(input: CalcInput): CalcResult {
     tonnellaggio,
     temperature,
   };
+  // Merge any computed g/cm² clamp info (calculated earlier) into result/warnings
+  try {
+    if (__cf_for_clamp) {
+      result.sources = { ...(result.sources ?? {}), clampModel: "g_cm2" };
+      (result as any).clampPressureRequired_g_cm2 = __cf_for_clamp.clampPressureRequired_g_cm2;
+      (result as any).clampUtilization_pct = __cap_for_clamp?.utilization_pct;
+      result.warnings = Array.isArray(result.warnings) ? result.warnings : (result.warnings ?? []);
+      if (__clamp_local_warnings.length) result.warnings.push(...__clamp_local_warnings);
+    }
+  } catch (_) {
+    // non-blocking
+  }
   // italian alias for callers/tests that expect it
   result.suggerimenti = suggestions.notes;
   // --- Apply press limits (clamp calculated params to press capabilities) ---

@@ -5,6 +5,7 @@ import { materialCatalog, getMaterialInput } from "../data/materialCatalog";
 import type { MaterialProfile } from "@/types/material";
 import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
 import { materialEffects } from "../lib/calc/materialEffects";
+import { applyPressLimits } from "../lib/pressLimits";
 import { parseOverride } from "../utils/overrides";
 import { enforceSafety } from "./safetyChecks";
 import { useDrawingStore } from "../stores/drawingStore";
@@ -123,22 +124,29 @@ export function calculateParameters(input: CalcInput): CalcResult {
   let backPressureBar = material.viscosity === "high" ? 80 : material.viscosity === "medium" ? 60 : 40;
   let screwRpm = screwDiameter <= 18 ? 250 : screwDiameter <= 22 ? 220 : screwDiameter <= 25 ? 200 : 180;
   let coolingTimeSec = material.crystalline ? 22 : 18;
-  // Prepare to capture material effects (multipliers, warnings, assumptions)
+  // Compute material effects deterministically from typed catalog (do not rely on pre-attached legacy fields)
   let fxWarnings: string[] = [];
   let fxAssumptions: string[] = [];
-  let fxMultipliers: any = null;
+  let fxMultipliers: { pressure?: number; flow?: number; cooling?: number } | null = null;
   try {
-    const matFx = (material as any)._materialEffects;
-    if (matFx) {
-      fxMultipliers = matFx.multipliers ?? null;
-      fxWarnings = Array.isArray(matFx.warnings) ? matFx.warnings.slice() : [];
-      fxAssumptions = Array.isArray(matFx.assumptions) ? matFx.assumptions.slice() : [];
-      if (fxMultipliers) {
-        const m = fxMultipliers;
-        injectionSpeedCm3s = Math.round(injectionSpeedCm3s * (m.flow ?? 1));
-        // pressure multiplier will be applied to holdingPressureBar where appropriate (after its init)
-        coolingTimeSec = Math.round(coolingTimeSec * (m.cooling ?? 1));
+    // prefer caller-provided legacy `_materialEffects` when present (backwards compatibility)
+    const legacyFx = (material as any)?._materialEffects ?? null;
+    if (legacyFx) {
+      fxMultipliers = legacyFx.multipliers ?? null;
+      fxWarnings = Array.isArray(legacyFx.warnings) ? legacyFx.warnings.slice() : [];
+      fxAssumptions = Array.isArray(legacyFx.assumptions) ? legacyFx.assumptions.slice() : [];
+    } else {
+      const typed = getMaterialById(String(material.id || '').toLowerCase());
+      const fx = materialEffects(typed as any || null);
+      if (fx) {
+        fxMultipliers = fx.multipliers ?? null;
+        fxWarnings = Array.isArray(fx.warnings) ? fx.warnings.slice() : [];
+        fxAssumptions = Array.isArray(fx.assumptions) ? fx.assumptions.slice() : [];
       }
+    }
+    if (fxMultipliers) {
+      injectionSpeedCm3s = Math.round(injectionSpeedCm3s * (fxMultipliers.flow ?? 1));
+      coolingTimeSec = Math.round(coolingTimeSec * (fxMultipliers.cooling ?? 1));
     }
   } catch (_) {
     // non-blocking
@@ -212,7 +220,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
     }
   } catch (_) {}
 
-  // Merge material fx warnings/assumptions now (after clamp checks) with stable dedupe
+  // prepare helper for stable dedupe (we'll merge material fx warnings after press limits)
   const pushUnique = (target: string[], items?: string[]) => {
     if (!Array.isArray(items)) return;
     for (const it of items) {
@@ -220,11 +228,6 @@ export function calculateParameters(input: CalcInput): CalcResult {
       if (!target.includes(it)) target.push(it);
     }
   };
-  // debug: log fx warnings/assumptions when present
-  try { if (fxWarnings && fxWarnings.length) {/* debug removed */} } catch (_) {}
-  try { if (fxAssumptions && fxAssumptions.length) {/* debug removed */} } catch (_) {}
-  pushUnique(warnings, fxWarnings);
-  pushUnique(warnings, fxAssumptions);
 
   // suggestions will be computed from the final warnings later
 
@@ -237,7 +240,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const pieceVolFromStore = geometry?.volumePezzo_cm3 ?? input.volumeCm3 ?? pieceVol;
 
   let suggestedInjectionSpeedCm3s = (thickness ? Math.round(injectionSpeedCm3s * Math.max(0.8, Math.min(1.4, 1 + (1.5 - Math.log10(thickness + 1)) * 0.08))) : injectionSpeedCm3s);
-  const computedInjectionPressure_bar = Math.round(Math.min(1500, ((family === 'PP' || family === 'PA66GF') ? 50 : 60) * Math.sqrt((projAreaFromStore || 10))));
+  let computedInjectionPressure_bar = Math.round(Math.min(1500, ((family === 'PP' || family === 'PA66GF') ? 50 : 60) * Math.sqrt((projAreaFromStore || 10))));
   let fillTime_s = Math.max(0.1, Math.round(((pieceVolFromStore || pieceVol) / Math.max(1, suggestedInjectionSpeedCm3s)) * 100) / 100);
 
   // --- Apply press max flow guardrail: compute required flow and clamp to press maxFlow if needed ---
@@ -269,6 +272,12 @@ export function calculateParameters(input: CalcInput): CalcResult {
   } catch (e) {
     // non-blocking: keep original values on error
   }
+  // apply pressure multiplier to computed injection pressure if available
+  try {
+    if (fxMultipliers && typeof fxMultipliers.pressure === 'number' && typeof computedInjectionPressure_bar === 'number') {
+      computedInjectionPressure_bar = Math.round(computedInjectionPressure_bar * (fxMultipliers.pressure ?? 1));
+    }
+  } catch (_) {}
   
   const vpRes: VPResult = { vpVolumeCm3: vpVolume, switchVolumeCm3: Math.max(1, Math.round((pieceVolFromStore || pieceVol) * 0.6)) };
   const packRes: PackResult = { packPressureBar: Math.round((material as any).density_g_cm3 ?? 1 * Math.max(20, Math.min(200, (pieceVolFromStore || pieceVol) * 0.5))), packTimeSec: packTime };
@@ -338,6 +347,35 @@ export function calculateParameters(input: CalcInput): CalcResult {
   };
   // italian alias for callers/tests that expect it
   result.suggerimenti = suggestions.notes;
+  // --- Apply press limits (clamp calculated params to press capabilities) ---
+  try {
+    const pressLimitsRes = applyPressLimits(result, effectivePress as any);
+    const added = pressLimitsRes.warningsAdded || [];
+    const clampedFields = pressLimitsRes.clampedFields || [];
+    const appliedCorrections = pressLimitsRes.appliedCorrections || [];
+    if (added.length) {
+      result.warnings = Array.from(new Set([...(result.warnings ?? []), ...added]));
+    }
+    if (appliedCorrections.length) {
+      result.appliedCorrections = result.appliedCorrections ?? [];
+      result.appliedCorrections.push(...appliedCorrections);
+    }
+    if (clampedFields.length) {
+      result.assumptions = Array.from(new Set([...(result.assumptions ?? []), 'Applied press limits clamp']));
+      result.sources = { ...(result.sources ?? {}), clampApplied: true };
+    }
+  } catch (e) {
+    // best-effort: do not break calculation flow
+  }
+
+  // Merge material fx warnings/assumptions after press limits so press-limit warnings appear first
+  try {
+    pushUnique(result.warnings = result.warnings ?? [], fxWarnings);
+    // also include material assumptions in warnings (legacy behavior expects them merged)
+    pushUnique(result.warnings, fxAssumptions);
+    // keep assumptions list too for downstream consumers
+    result.assumptions = Array.from(new Set([...(result.assumptions ?? []), ...fxAssumptions]));
+  } catch (_) {}
   return result as CalcResult;
 }
 

@@ -123,15 +123,22 @@ export function calculateParameters(input: CalcInput): CalcResult {
   let backPressureBar = material.viscosity === "high" ? 80 : material.viscosity === "medium" ? 60 : 40;
   let screwRpm = screwDiameter <= 18 ? 250 : screwDiameter <= 22 ? 220 : screwDiameter <= 25 ? 200 : 180;
   let coolingTimeSec = material.crystalline ? 22 : 18;
-
-  // Apply material effects multipliers if provided (attached by caller)
+  // Prepare to capture material effects (multipliers, warnings, assumptions)
+  let fxWarnings: string[] = [];
+  let fxAssumptions: string[] = [];
+  let fxMultipliers: any = null;
   try {
     const matFx = (material as any)._materialEffects;
-    if (matFx && matFx.multipliers) {
-      const m = matFx.multipliers;
-      injectionSpeedCm3s = Math.round(injectionSpeedCm3s * (m.flow ?? 1));
-      // pressure multiplier will be applied to holdingPressureBar where appropriate (after its init)
-      coolingTimeSec = Math.round(coolingTimeSec * (m.cooling ?? 1));
+    if (matFx) {
+      fxMultipliers = matFx.multipliers ?? null;
+      fxWarnings = Array.isArray(matFx.warnings) ? matFx.warnings.slice() : [];
+      fxAssumptions = Array.isArray(matFx.assumptions) ? matFx.assumptions.slice() : [];
+      if (fxMultipliers) {
+        const m = fxMultipliers;
+        injectionSpeedCm3s = Math.round(injectionSpeedCm3s * (m.flow ?? 1));
+        // pressure multiplier will be applied to holdingPressureBar where appropriate (after its init)
+        coolingTimeSec = Math.round(coolingTimeSec * (m.cooling ?? 1));
+      }
     }
   } catch (_) {
     // non-blocking
@@ -189,16 +196,6 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const totalShot = Math.round(pieceVol + runnerVol);
   
   const warnings: string[] = [];
-  // merge material effects warnings/assumptions (if any)
-  try {
-    const matFx = (material as any)._materialEffects;
-    if (matFx) {
-      if (Array.isArray(matFx.warnings) && matFx.warnings.length) warnings.push(...matFx.warnings);
-      if (Array.isArray(matFx.assumptions) && matFx.assumptions.length) warnings.push(...matFx.assumptions);
-    }
-  } catch (_) {
-    // ignore
-  }
     const ep: any = effectivePress as any;
     const maxSpeed = ep?.maxInjectionSpeed_cm3_s ?? ep?.maxInjectionSpeed_cm3s ?? ep?.maxSpeedCm3s ?? ep?.maxSpeed_cm3s ?? ep?.maxSpeedCm3s;
     if (maxSpeed && injectionSpeedCm3s > maxSpeed) warnings.push(`Velocità iniezione ${injectionSpeedCm3s} cm³/s > max pressa ${maxSpeed} cm³/s`);
@@ -207,6 +204,29 @@ export function calculateParameters(input: CalcInput): CalcResult {
     const shotCap = ep?.maxShotVolume_cm3 ?? ep?.shotVolumeCm3 ?? ep?.maxShotVolumeCm3;
     if (shotCap && totalShot > shotCap) warnings.push(`Shot stimato ${totalShot} cm³ > capacità vite pressa ${shotCap} cm³`);
     if (clampForceTon > (ep?.clampForceTon || 0)) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità pressa ${ep?.clampForceTon} ton`);
+
+  // Apply pressure multiplier (after holdingPressureBar initialization and overrides)
+  try {
+    if (fxMultipliers && typeof fxMultipliers.pressure === 'number') {
+      holdingPressureBar = Math.round((holdingPressureBar || 0) * (fxMultipliers.pressure ?? 1));
+    }
+  } catch (_) {}
+
+  // Merge material fx warnings/assumptions now (after clamp checks) with stable dedupe
+  const pushUnique = (target: string[], items?: string[]) => {
+    if (!Array.isArray(items)) return;
+    for (const it of items) {
+      if (!it) continue;
+      if (!target.includes(it)) target.push(it);
+    }
+  };
+  // debug: log fx warnings/assumptions when present
+  try { if (fxWarnings && fxWarnings.length) {/* debug removed */} } catch (_) {}
+  try { if (fxAssumptions && fxAssumptions.length) {/* debug removed */} } catch (_) {}
+  pushUnique(warnings, fxWarnings);
+  pushUnique(warnings, fxAssumptions);
+
+  // suggestions will be computed from the final warnings later
 
   const vpVolume = Math.max(1, Math.round(pieceVol * 0.95));
   const packTime = Math.max(1, Math.round((pieceVol || 1) * 0.5));

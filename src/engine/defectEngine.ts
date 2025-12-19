@@ -1,6 +1,8 @@
 import DEFECT_RULES from "../data/defectRules";
 import { CalcInput } from "./calcEngine";
 import { parseOverride } from "../utils/overrides";
+import { applyCorrectionsToInput, dedupeCorrections, resolveFieldConflicts, type AppliedCorrection } from "./defectApply";
+import { getDefectCorrections } from "../core/defectRules";
 
 export interface ApplyResult {
   patchedInput: CalcInput;
@@ -137,3 +139,26 @@ export function applyDefectRules(input: CalcInput, rulesOrDefect: RulesMap | { _
 export default {
   applyDefectRules,
 };
+
+export type DefectSeverity = "low" | "medium" | "high";
+
+export function applyDefectAutoRecalc<T extends Record<string, any>>(args: {
+  baseInput: T;
+  defectId?: string | null;
+  severity?: DefectSeverity;
+}): { patchedInput: T; appliedCorrections: AppliedCorrection[]; audit: string[] } {
+  const defectId = args.defectId ?? undefined;
+  const severity: DefectSeverity = args.severity ?? "medium";
+
+  if (!defectId) {
+    return { patchedInput: args.baseInput, appliedCorrections: [], audit: [] };
+  }
+
+  const raw = getDefectCorrections(defectId, severity);
+
+  const deduped = dedupeCorrections(raw);
+  const resolved = resolveFieldConflicts(deduped);
+
+  const res = applyCorrectionsToInput(args.baseInput, resolved);
+  return { patchedInput: res.patchedInput, appliedCorrections: res.appliedCorrections, audit: res.audit };
+}

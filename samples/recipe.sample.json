@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "projectName": "SAMPLE_PROJECT",
+    "timestampISO": "2025-12-20T16:26:53.674Z",
+    "appVersion": "0.0.0",
+    "pressCatalogVersion": "arburg-press-catalog-v1",
+    "materialsVersion": "materials-v1"
+  },
+  "input": {},
+  "output": {},
+  "warnings": [],
+  "assumptions": [],
+  "defect": null
+}

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useParametriStore } from "../../store/parametriStore";
 import { calculateParameters } from "../../engine/calcEngine";
 import CalculatedParameters from "./CalculatedParameters";
+import ExportRecipeButton from '../../components/ExportRecipeButton';
 import { getBrands, getModels, getPressSpecs } from "../../lib/pressData";
 import { getMaterialById } from "../../engine/materialData";
 import { CADUpload } from '@/components/CADUpload';
@@ -207,7 +208,12 @@ export default function ParametriPage() {
 
       {/* RISULTATO */}
       {result && (
-        <CalculatedParameters result={result} />
+        <>
+          <CalculatedParameters result={result} />
+          <div className="mt-4">
+            <ExportRecipeButton />
+          </div>
+        </>
       )}
 
     </div>

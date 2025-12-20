@@ -50,7 +50,7 @@ export interface MaterialProfile {
   source?: string;
 }
 
-const VERSION = "materials-v1";
+export const VERSION = "materials-v1";
 
 // Nota: valori “di lavoro” (range industriali comuni) + moltiplicatori coerenti
 // Non sono schede tecniche di un brand specifico: sono baseline per calcolo automatico.

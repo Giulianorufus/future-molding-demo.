@@ -96,3 +96,23 @@ Notes
 The OCCT build used in this project exposes readers like ReadStepFile / ReadIgesFile.
 
 STL reader is not guaranteed (many builds do not expose ReadStlFile), therefore the integration test uses STEP only.
+
+## Export ricetta (JSON / CSV / PDF)
+
+Dalla pagina **Parametri** è disponibile il bottone **Export recipe** (compare dopo il calcolo).
+
+Genera tre file deterministici:
+
+- `recipe.sample.json` — snapshot completo del calcolo (meta, input, output, warnings/assumptions).
+- `recipe.sample.csv` — estratto con colonne principali (separatore `;`).
+- `recipe.sample.pdf` — versione stampabile sintetica.
+
+Comandi utili:
+
+```bash
+npm test
+npm run smoke:pdf      # esegue lo smoke rapido (usa tsx loader)
+npm run samples:recipe # genera samples/recipe.sample.*
+```
+
+I sample generati sono in `samples/`. File temporanei di debug vengono scritti in `tmp/` (ignorata da git).

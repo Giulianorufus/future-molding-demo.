@@ -3,8 +3,6 @@ import type { RecipeSnapshot } from "./recipeTypes";
 import { PRESS_CATALOG_VERSION } from "../../data/pressCatalog/pressCatalogVersion";
 import { VERSION as MATERIALS_VERSION } from "../../data/materialLibrary";
 
-const APP_VERSION = (process.env.VITE_APP_VERSION as string) || process.env.npm_package_version || "dev";
-
 export function buildRecipeSnapshot(opts: {
   projectName?: string | null;
   input?: Record<string, any>;
@@ -14,12 +12,17 @@ export function buildRecipeSnapshot(opts: {
   warnings?: string[];
   assumptions?: string[];
   defect?: { id?: string; severity?: string; audit?: string[] } | null;
+  recipeFingerprint?: string;
+  appVersion?: string;
 }): RecipeSnapshot {
   const ts = new Date().toISOString();
+  const appVersion = opts.appVersion ?? ((typeof process !== 'undefined' && (process.env?.VITE_APP_VERSION as string)) || (typeof process !== 'undefined' && process.env?.npm_package_version) || "dev");
+
   const meta = {
     projectName: opts.projectName ?? null,
+    recipeFingerprint: opts.recipeFingerprint,
     timestampISO: ts,
-    appVersion: String(APP_VERSION),
+    appVersion: String(appVersion),
     pressCatalogVersion: String(PRESS_CATALOG_VERSION ?? "unknown"),
     materialsVersion: String(MATERIALS_VERSION ?? "unknown"),
   };

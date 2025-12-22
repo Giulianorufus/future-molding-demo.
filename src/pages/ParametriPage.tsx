@@ -3,6 +3,7 @@ import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
 import SimilarCasesPanel from "../components/SimilarCasesPanel";
 import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
 import { useCaseStore } from "../stores/caseStore";
+import { useEffect } from "react";
 import type { CalculationResultWithProfiles } from "../engine/calcEngine";
 import type { CaseRecord } from "../engine/caseBased/caseTypes";
 
@@ -38,6 +39,48 @@ export default function ParametriPage() {
       }
     } catch (_) {}
   }
+
+  // read cases to prefer an imported case snapshot when available
+  const cases = useCaseStore((s) => s.cases);
+  const bulkAddCases = useCaseStore((s) => s.bulkAddCases);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    if (cases.length === 0) {
+      const now = new Date().toISOString();
+      const seed: CaseRecord[] = [
+        {
+          id: "devcase-1-0001",
+          createdAt: now,
+          recipeFingerprint: "dev-fp-1",
+          materialId: "DEV_MAT",
+          pressId: "DEV_PRESS",
+          screwDiameter_mm: 20,
+          geometryHash: undefined,
+          projectedArea_cm2: undefined,
+          shotVolume_cm3: undefined,
+              recipeSnapshot: buildRecipeSnapshot({ projectName: "dev", input: {}, output: {}, appVersion: (import.meta as any).env?.VITE_APP_VERSION ?? "dev" }),
+          outcome: { producedQty: 1000, scrapQty: 10, scrapRate_pct: 1 },
+        },
+        {
+          id: "devcase-2-0002",
+          createdAt: now,
+          recipeFingerprint: "dev-fp-2",
+          materialId: "DEV_MAT",
+          pressId: "DEV_PRESS",
+          screwDiameter_mm: 20,
+          geometryHash: undefined,
+          projectedArea_cm2: undefined,
+          shotVolume_cm3: undefined,
+              recipeSnapshot: buildRecipeSnapshot({ projectName: "dev2", input: {}, output: {}, appVersion: (import.meta as any).env?.VITE_APP_VERSION ?? "dev" }),
+          outcome: { producedQty: 500, scrapQty: 25, scrapRate_pct: 5 },
+        },
+      ];
+      try {
+        bulkAddCases(seed);
+      } catch (_) {}
+    }
+  }, [cases.length, bulkAddCases]);
 
   return (
     <div className="p-8">
@@ -129,48 +172,22 @@ export default function ParametriPage() {
       <ProcessProfilesPanel result={result} />
 
       {/* Similar cases: minimal dev seed + panel */}
-      {/* Similar cases panel - build a best-effort snapshot from available data */}
-      <SimilarCasesPanel snapshot={buildRecipeSnapshot({ projectName: null, input: {}, output: {} })} />
+      {/* Similar cases panel - prefer a snapshot from an imported case when available so imported cases surface automatically */}
+      {
+        (() => {
+          const snapshot = cases && cases.length > 0
+            ? cases[0].recipeSnapshot
+            : buildRecipeSnapshot({ projectName: null, input: {}, output: {}, appVersion: (import.meta as any).env?.VITE_APP_VERSION ?? "dev" });
+          return (
+            <>
+              <SimilarCasesPanel snapshot={snapshot} />
+              <div data-testid="case-count" className="mt-2 text-sm text-gray-500">Cases: {cases.length}</div>
+            </>
+          );
+        })()
+      }
 
-      {/* DEV-only seeding: lightweight, does not depend on result typings */}
-      {import.meta.env.DEV && (() => {
-        const { bulkAddCases, cases } = useCaseStore((s) => ({ bulkAddCases: s.bulkAddCases, cases: s.cases }));
-        if (cases.length === 0) {
-          const now = new Date().toISOString();
-          const seed: CaseRecord[] = [
-            {
-              id: "devcase-1-0001",
-              createdAt: now,
-              recipeFingerprint: "dev-fp-1",
-              materialId: "DEV_MAT",
-              pressId: "DEV_PRESS",
-              screwDiameter_mm: 20,
-              geometryHash: undefined,
-              projectedArea_cm2: undefined,
-              shotVolume_cm3: undefined,
-              recipeSnapshot: buildRecipeSnapshot({ projectName: "dev", input: {}, output: {} }),
-              outcome: { producedQty: 1000, scrapQty: 10, scrapRate_pct: 1 },
-            },
-            {
-              id: "devcase-2-0002",
-              createdAt: now,
-              recipeFingerprint: "dev-fp-2",
-              materialId: "DEV_MAT",
-              pressId: "DEV_PRESS",
-              screwDiameter_mm: 20,
-              geometryHash: undefined,
-              projectedArea_cm2: undefined,
-              shotVolume_cm3: undefined,
-              recipeSnapshot: buildRecipeSnapshot({ projectName: "dev2", input: {}, output: {} }),
-              outcome: { producedQty: 500, scrapQty: 25, scrapRate_pct: 5 },
-            },
-          ];
-          try {
-            bulkAddCases(seed);
-          } catch (_) {}
-        }
-        return null;
-      })()}
+      {/* DEV-only seeding handled in effect above */}
     </div>
   );
 }

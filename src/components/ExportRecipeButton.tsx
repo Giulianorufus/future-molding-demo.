@@ -22,6 +22,7 @@ export function ExportRecipeButton() {
       warnings: (lastCalcResult as any)?.warnings ?? [],
       assumptions: (lastCalcResult as any)?.assumptions ?? [],
       defect: (lastCalcResult as any)?.defect ?? null,
+      appVersion: (import.meta as any).env?.VITE_APP_VERSION ?? "dev",
     });
 
     const json = exportRecipeJson(snapshot);

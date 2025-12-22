@@ -30,7 +30,9 @@
     "electron:build": "npx electron-builder",
     "e2e": "concurrently \"npm run dev\" \"npx wait-on http://localhost:5173 && npx playwright test\"",
     "e2e:simulate": "node scripts/e2e-simulate-upload.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dev:profiles": "tsx scripts/dev/runProfiles.ts",
+    "dev:profiles:debug": "tsx scripts/dev/debug_profiles.ts"
   },
   "main": "electron/main.js",
   "build": {

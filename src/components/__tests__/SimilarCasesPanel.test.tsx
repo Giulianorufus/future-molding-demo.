@@ -1,6 +1,13 @@
+/** @jest-environment jsdom */
+ 
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { useCaseStore } from '../../stores/caseStore';
 import { buildRecipeSnapshot } from '../../engine/recipeExport/buildRecipeSnapshot';
 import { buildCaseQueryFromSnapshot } from '../../engine/caseBased';
+import SimilarCasesPanel from '../../components/SimilarCasesPanel';
+import { useParametriStore } from '../../stores/parametriStore';
 
 describe('SimilarCasesPanel', () => {
   test('renders seeded similar cases (DEV seed)', () => {
@@ -41,5 +48,19 @@ describe('SimilarCasesPanel', () => {
     const query = buildCaseQueryFromSnapshot(snapshot);
     const results = useCaseStore.getState().findSimilar(query, 5);
     expect(results.length).toBeGreaterThanOrEqual(2);
+
+    // render component and test apply baseline
+    render(<SimilarCasesPanel snapshot={snapshot} topK={5} />);
+
+    // click first Applica button
+    const btns = screen.getAllByText('Applica');
+    expect(btns.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(btns[0]);
+
+    // baseline state set
+    const ps = useParametriStore.getState();
+    expect(ps.baselineCaseId).toBeDefined();
+    // UI badge appears
+    expect(screen.getByText('Baseline')).toBeInTheDocument();
   });
 });

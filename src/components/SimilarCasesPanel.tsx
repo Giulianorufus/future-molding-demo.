@@ -2,6 +2,7 @@ import React from "react";
 import type { RecipeSnapshot } from "../engine/recipeExport/recipeTypes";
 import { buildCaseQueryFromSnapshot } from "../engine/caseBased";
 import { useCaseStore } from "../stores/caseStore";
+import { useParametriStore } from "../stores/parametriStore";
 
 type Props = {
   snapshot: RecipeSnapshot | null;
@@ -10,6 +11,8 @@ type Props = {
 
 export default function SimilarCasesPanel({ snapshot, topK = 5 }: Props) {
   const findSimilar = useCaseStore((s) => s.findSimilar);
+  const baselineCaseId = useParametriStore((s) => s.baselineCaseId);
+  const applyBaselineFromCase = useParametriStore((s) => s.applyBaselineFromCase);
 
   if (!snapshot) return null;
 
@@ -18,7 +21,7 @@ export default function SimilarCasesPanel({ snapshot, topK = 5 }: Props) {
 
   if (!results || results.length === 0) return null;
 
-  if (import.meta.env.DEV) {
+  if (process.env.NODE_ENV !== "production") {
     try {
       const casesLen = useCaseStore.getState().cases.length;
       // eslint-disable-next-line no-console
@@ -41,11 +44,26 @@ export default function SimilarCasesPanel({ snapshot, topK = 5 }: Props) {
           {results.map((r) => {
             const parts = r.caseId.split(":");
             const label = parts.length >= 3 ? parts[2] : r.caseId.slice(0, 8);
+            const caseRecord = useCaseStore.getState().cases.find((c) => c.id === r.caseId) as any;
             return (
               <tr key={r.caseId} className="border-t">
-                <td className="py-2 font-mono">{label}</td>
+                <td className="py-2 font-mono">
+                  {label}
+                  {baselineCaseId === r.caseId ? <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">Baseline</span> : null}
+                </td>
                 <td className="py-2">{r.score}</td>
                 <td className="py-2 text-gray-700">{r.reasons.join(" • ")}</td>
+                <td className="py-2">
+                  <button
+                    onClick={() => {
+                      if (caseRecord) applyBaselineFromCase(caseRecord);
+                    }}
+                    type="button"
+                    className="ml-2 px-2 py-1 bg-blue-600 text-white rounded text-sm"
+                  >
+                    Applica
+                  </button>
+                </td>
               </tr>
             );
           })}

@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import type { CaseRecord } from '../engine/caseBased'
+import type { RecipeSnapshot } from '../engine/recipeExport/recipeTypes'
 import { calcolaParametri, type CalculationInput, type CalculationResult } from '../core/calcEngine'
 import { logInput, logOutput } from '../core/log'
 import { useDrawingStore } from './drawingStore'
@@ -26,6 +28,9 @@ export type ParametriState = {
     delta?: Record<string, number>
     notes: string[]
   }
+  baselineCaseId?: string | undefined
+  baselineSnapshot?: RecipeSnapshot | undefined
+  applyBaselineFromCase: (c: CaseRecord) => void
   ricalcola: (input: CalculationInput) => Promise<void>
   reset: () => void
 }
@@ -39,6 +44,8 @@ export const useParametriStore = create<ParametriState>((set) => ({
   loading: false,
   error: null,
   lastDefectFix: null,
+  baselineCaseId: undefined,
+  baselineSnapshot: undefined,
   async ricalcola(input) {
     set({ isCalculating: true, loading: true, error: null })
     try {
@@ -146,6 +153,26 @@ export const useParametriStore = create<ParametriState>((set) => ({
   },
   reset() {
     set({ lastInput: null, result: null, isCalculating: false, loading: false, error: null, lastDefectFix: null })
+  },
+  applyBaselineFromCase(c) {
+    try {
+      // prefill baseline metadata in this store
+      set((s: any) => ({
+        ...s,
+        baselineCaseId: c.id,
+        baselineSnapshot: c.recipeSnapshot as RecipeSnapshot,
+      }))
+
+      // also update press/material selection in their stores (idempotent)
+      try {
+        const ps = usePressStore.getState()
+        if (typeof ps.selectPress === 'function') ps.selectPress(c.pressId ?? null)
+      } catch (_e) {}
+      try {
+        const ms = useMaterialStore.getState()
+        if (typeof ms.selectMaterial === 'function') ms.selectMaterial(c.materialId ?? null)
+      } catch (_e) {}
+    } catch (_e) {}
   },
 }))
 

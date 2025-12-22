@@ -1,5 +1,5 @@
-import { buildInjectionProfile } from '../src/engine/profiles/buildInjectionProfile';
-import { buildPackingProfile } from '../src/engine/profiles/buildPackingProfile';
+import { buildInjectionProfile } from '../../src/engine/profiles/buildInjectionProfile';
+import { buildPackingProfile } from '../../src/engine/profiles/buildPackingProfile';
 
 async function main() {
   const input = {

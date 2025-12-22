@@ -1,5 +1,5 @@
-import { buildInjectionProfile } from '../src/engine/profiles/buildInjectionProfile.ts';
-import { buildPackingProfile } from '../src/engine/profiles/buildPackingProfile.ts';
+import { buildInjectionProfile } from '../../src/engine/profiles/buildInjectionProfile.ts';
+import { buildPackingProfile } from '../../src/engine/profiles/buildPackingProfile.ts';
 
 function show(title: string, obj: any) {
   console.log('---', title, '---');

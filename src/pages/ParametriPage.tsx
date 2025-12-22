@@ -24,11 +24,13 @@ export default function ParametriPage() {
       if (raw) {
         const parsed = JSON.parse(raw)
         const _p = parsed as CalculationResultWithProfiles;
-        console.log('profiles', {
-          inj: _p?.injectionProfile?.steps?.length ?? 0,
-          pack: _p?.packingProfile?.steps?.length ?? 0,
-          sw: _p?.switchover ?? _p?.switchover_volumePercent ?? null,
-        })
+        if (import.meta.env.DEV) {
+          console.log('profiles', {
+            inj: _p?.injectionProfile?.steps?.length ?? 0,
+            pack: _p?.packingProfile?.steps?.length ?? 0,
+            sw: _p?.switchover ?? _p?.switchover_volumePercent ?? null,
+          })
+        }
       }
     } catch (_) {}
   }

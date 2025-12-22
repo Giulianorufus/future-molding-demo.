@@ -45,7 +45,9 @@ export default function ParametriPage() {
   const bulkAddCases = useCaseStore((s) => s.bulkAddCases);
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    // DEV seeding is now opt-in via VITE_ENABLE_DEV_SIMILAR_CASES=1
+    const enableDevSeed = (import.meta as any).env?.VITE_ENABLE_DEV_SIMILAR_CASES === '1';
+    if (!enableDevSeed) return;
     if (cases.length === 0) {
       const now = new Date().toISOString();
       const seed: CaseRecord[] = [

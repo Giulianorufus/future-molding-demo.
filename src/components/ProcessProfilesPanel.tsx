@@ -4,10 +4,10 @@ function fmt(n?: number) {
 }
 
 import React from "react";
-import type { CalcResult, ProcessProfile, Switchover } from "../engine/calcEngine";
-import type { CalculationResultWithProfiles } from "../core/calcEngine";
+import type { CalcResult, ProcessProfile, Switchover, CalculationResultWithProfiles } from "../engine/calcEngine";
+import type { CalculationResult } from "../core/calcEngine";
 
-type UIResult = (CalcResult | CalculationResultWithProfiles) & Partial<{
+type UIResult = (CalcResult | CalculationResultWithProfiles | CalculationResult) & Partial<{
   injectionProfile: ProcessProfile;
   packingProfile: ProcessProfile;
   switchover: Switchover;

@@ -109,6 +109,13 @@ export interface ProcessProfile {
 
 export type Switchover = number;
 
+export type CalculationResultWithProfiles = CalcResult & Partial<{
+  injectionProfile: ProcessProfile;
+  packingProfile: ProcessProfile;
+  switchover: Switchover;
+  switchover_volumePercent: Switchover;
+}>;
+
 export function calculateParameters(input: CalcInput): CalcResult {
   const { material, press, screwDiameter } = input;
   // Recupero geometria dalla fonte corretta: drawingStore

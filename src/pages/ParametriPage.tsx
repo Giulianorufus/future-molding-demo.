@@ -1,6 +1,6 @@
 import { useParametriStore } from "../stores/parametriStore";
 import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
-import type { CalculationResultWithProfiles } from "../core/calcEngine";
+import type { CalculationResultWithProfiles } from "../engine/calcEngine";
 
 export default function ParametriPage() {
   const result = useParametriStore((s) => s.result);

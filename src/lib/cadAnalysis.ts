@@ -1,6 +1,7 @@
 // Browser-compatible CAD analysis system for STEP, IGES, STL files
 import * as THREE from 'three';
 import { parseCAD } from './cadParser';
+import { getCadAnalysisCached, setCadAnalysisCached } from './cadAnalysisCache';
 import { cadFallbackResult } from './cadFallback';
 import * as log from '@/lib/log';
 import { recordParseMetric } from '@/services/metrics';
@@ -28,6 +29,18 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
   const ext = getFileExtension(file.name).toLowerCase();
   if ([".stl", ".step", ".stp", ".iges", ".igs"].includes(ext)) {
     // Usa il parser avanzato per tutti i formati supportati
+    // compute hash + cache key from file content (ArrayBuffer) before parsing
+    const buf = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", buf);
+    const hashHex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    const cacheKey = `cad:${ext}:${hashHex}`;
+
+    const cached = getCadAnalysisCached<AnalysisResult>(cacheKey);
+    if (cached) {
+      try { onProgress?.({ progress: 1, status: "cached", message: "Usato risultato cached" }); } catch {};
+      return cached;
+    }
+
     try {
       const t0 = performance.now();
       let fallbackUsed = false;
@@ -36,7 +49,8 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
       try {
         recordParseMetric({ id: Math.random().toString(36).slice(2,9), fileName: file.name, fileSizeBytes: file.size, durationMs: Math.round(t1 - t0), timestamp: Date.now(), success: true, fallbackUsed });
       } catch (e) {}
-      return {
+
+      const result: AnalysisResult = {
         volume: geom.volume_cm3,
         thickness_min: (geom as any).thickness_mm ?? 0,
         thickness_max: (geom as any).thickness_mm ?? 0,
@@ -51,6 +65,11 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
         warnings: [],
         meshes: (geom as any).meshes ?? [],
       };
+
+      // cache successful analysis
+      try { setCadAnalysisCached(cacheKey, result); } catch (e) {}
+
+      return result;
     } catch (err: any) {
       // Se il parser fallisce, log e fallback unificato: non rilanciamo mai
       log.warn('parseCAD failed:', err);

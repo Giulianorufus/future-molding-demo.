@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { parseCAD } from './cadParser';
 import { getCadAnalysisCached, setCadAnalysisCached } from './cadAnalysisCache';
 import { cadFallbackResult } from './cadFallback';
+import { recordCacheHit, recordCacheMiss, recordTimeout, recordParse } from './cadTelemetry';
 // Parse timeout configuration
 const DEFAULT_PARSE_TIMEOUT_MS = 15000;
 
@@ -56,16 +57,19 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
 
     const cached = getCadAnalysisCached<AnalysisResult>(cacheKey);
     if (cached) {
+      try { recordCacheHit(); } catch (e) {}
       try { onProgress?.({ progress: 1, status: "cached", message: "Usato risultato cached" }); } catch {};
       return cached;
     }
 
     try {
       const t0 = performance.now();
+      try { recordCacheMiss(); } catch (e) {}
       let fallbackUsed = false;
       // Run parse with timeout to avoid blocking the app; fallback on timeout
       const geom = await withTimeout(parseCAD(file, onProgress), getParseTimeoutMs());
       const t1 = performance.now();
+      try { recordParse(t1 - t0); } catch (e) {}
       try {
         recordParseMetric({ id: Math.random().toString(36).slice(2,9), fileName: file.name, fileSizeBytes: file.size, durationMs: Math.round(t1 - t0), timestamp: Date.now(), success: true, fallbackUsed });
       } catch (e) {}
@@ -92,6 +96,7 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
       return result;
     } catch (err: any) {
       // Se il parser fallisce, log e fallback unificato: non rilanciamo mai
+      try { if (String(err?.message ?? err).toLowerCase().includes('timeout')) { recordTimeout(); } } catch(e) {}
       log.warn('parseCAD failed:', err);
       try {
         if (onProgress) {

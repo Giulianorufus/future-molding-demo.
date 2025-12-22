@@ -17,8 +17,9 @@ const STORAGE_LIMIT = 200;
 
 function loadFromStorage(): CaseRecord[] {
   try {
-    if (typeof window === "undefined" || !window.localStorage) return [];
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const g: any = globalThis as any;
+    if (typeof g === "undefined" || !g.localStorage) return [];
+    const raw = g.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed as CaseRecord[];
@@ -31,9 +32,10 @@ function loadFromStorage(): CaseRecord[] {
 
 function saveToStorage(cases: CaseRecord[]) {
   try {
-    if (typeof window === "undefined" || !window.localStorage) return;
+    const g: any = globalThis as any;
+    if (typeof g === "undefined" || !g.localStorage) return;
     const toSave = cases.slice(0, STORAGE_LIMIT);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    g.localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (_e) {
     // best-effort
   }

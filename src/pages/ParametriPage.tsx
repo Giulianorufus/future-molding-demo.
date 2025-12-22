@@ -1,9 +1,35 @@
 import { useParametriStore } from "../stores/parametriStore";
+import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
+import type { CalculationResultWithProfiles } from "../core/calcEngine";
 
 export default function ParametriPage() {
   const result = useParametriStore((s) => s.result);
   const loading = useParametriStore((s) => s.loading);
   const error = useParametriStore((s) => s.error);
+  // cast as the extended CalculationResult that may contain optional profiles
+  const _res = result as unknown as CalculationResultWithProfiles;
+  console.log("profiles", {
+    inj: _res?.injectionProfile?.steps?.length ?? 0,
+    pack: _res?.packingProfile?.steps?.length ?? 0,
+    sw: _res?.switchover ?? _res?.switchover_volumePercent ?? null,
+  });
+
+  // Debug helper: if result is not available yet, try to read cached last result from localStorage
+  // and print its profiles so we can debug wiring without performing full UI actions.
+  if (typeof window !== 'undefined' && !result) {
+    try {
+      const raw = window.localStorage.getItem('fm:lastCalcResult')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const _p = parsed as CalculationResultWithProfiles;
+        console.log('profiles', {
+          inj: _p?.injectionProfile?.steps?.length ?? 0,
+          pack: _p?.packingProfile?.steps?.length ?? 0,
+          sw: _p?.switchover ?? _p?.switchover_volumePercent ?? null,
+        })
+      }
+    } catch (_) {}
+  }
 
   return (
     <div className="p-8">
@@ -92,6 +118,7 @@ export default function ParametriPage() {
           </table>
         </div>
       )}
+      <ProcessProfilesPanel result={result} />
     </div>
   );
 }

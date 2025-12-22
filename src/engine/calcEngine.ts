@@ -81,7 +81,33 @@ export interface CalcResult {
   coolingTime?: number;
   tonnellaggio?: number;
   temperature?: Record<string, number> | Record<string, string>;
+
+  // minimal process profile types (optional)
+  injectionProfile?: ProcessProfile;
+  packingProfile?: ProcessProfile;
+  // switchover as percent or absolute (use numeric value)
+  switchover?: Switchover;
+  // legacy accessor kept for compatibility
+  switchover_volumePercent?: Switchover;
 }
+
+export type StageValue = number;
+
+export interface ProcessStage {
+  step?: number;
+  // common fields used by the UI
+  speed_cm3_s?: number;
+  pressure_bar?: number;
+  time_s?: number;
+  endBy?: { kind?: string; value?: number };
+  label?: string;
+}
+
+export interface ProcessProfile {
+  steps: ProcessStage[];
+}
+
+export type Switchover = number;
 
 export function calculateParameters(input: CalcInput): CalcResult {
   const { material, press, screwDiameter } = input;

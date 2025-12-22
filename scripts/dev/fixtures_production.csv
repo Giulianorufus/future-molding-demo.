@@ -1,0 +1,3 @@
+recipeFingerprint,materialId,pressId,producedQty,scrapQty,defect,cycleTime_s,notes
+fp-ABS-001,ABS,arburg-100t,90,10,flash,22.5,ci-e2e
+fp-PP-002,PP,arburg-80t,50,0,short_shot,18.0,ci-e2e

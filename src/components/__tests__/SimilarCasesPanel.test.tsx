@@ -52,6 +52,10 @@ describe('SimilarCasesPanel', () => {
     // render component and test apply baseline
     render(<SimilarCasesPanel snapshot={snapshot} topK={5} />);
 
+    // preview shows material and press (at least one)
+    const mats = screen.getAllByText('MAT_A');
+    expect(mats.length).toBeGreaterThanOrEqual(1);
+
     // click first Applica button
     const btns = screen.getAllByText('Applica');
     expect(btns.length).toBeGreaterThanOrEqual(1);

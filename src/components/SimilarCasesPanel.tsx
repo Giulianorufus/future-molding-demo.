@@ -36,6 +36,7 @@ export default function SimilarCasesPanel({ snapshot, topK = 5 }: Props) {
         <thead>
           <tr className="text-left text-gray-600">
             <th>Case</th>
+            <th>Preview</th>
             <th>Score</th>
             <th>Reasons</th>
           </tr>
@@ -50,6 +51,15 @@ export default function SimilarCasesPanel({ snapshot, topK = 5 }: Props) {
                 <td className="py-2 font-mono">
                   {label}
                   {baselineCaseId === r.caseId ? <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">Baseline</span> : null}
+                </td>
+                <td className="py-2 text-gray-700">
+                  <div className="text-sm">
+                    <div><strong>Mat:</strong> {caseRecord?.recipeSnapshot?.material?.id ?? caseRecord?.materialId ?? '--'}</div>
+                    <div><strong>Pressa/Vite:</strong> {caseRecord?.recipeSnapshot?.press?.model ?? caseRecord?.pressId ?? '--'} {caseRecord?.recipeSnapshot?.press?.screwDiameter_mm ? ` / ${caseRecord.recipeSnapshot.press.screwDiameter_mm}mm` : (caseRecord?.screwDiameter_mm ? ` / ${caseRecord.screwDiameter_mm}mm` : '')}</div>
+                    <div><strong>Esito:</strong> {caseRecord?.outcome?.producedQty ?? '--'} prod · {caseRecord?.outcome?.scrapQty ?? '--'} scrap</div>
+                    <div><strong>Cycle/cooling:</strong> {caseRecord?.outcome?.cycleTime_s ? `${caseRecord.outcome.cycleTime_s}s` : (caseRecord?.recipeSnapshot?.output?.times ? `${caseRecord.recipeSnapshot.output.times.injectionMs ?? '--'}ms / ${caseRecord.recipeSnapshot.output.times.coolingMs ?? '--'}ms` : '--')}</div>
+                    <div><strong>Switchover:</strong> {caseRecord?.recipeSnapshot?.output?.switchover_volumePercent ?? caseRecord?.recipeSnapshot?.output?.switchover ?? caseRecord?.recipeSnapshot?.input?.injection?.switchover ?? (caseRecord?.recipeSnapshot?.output?.injectionProfile ? `${caseRecord.recipeSnapshot.output.injectionProfile.length} steps` : '--')}</div>
+                  </div>
                 </td>
                 <td className="py-2">{r.score}</td>
                 <td className="py-2 text-gray-700">{r.reasons.join(" • ")}</td>

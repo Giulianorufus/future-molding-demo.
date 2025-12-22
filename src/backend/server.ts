@@ -11,6 +11,7 @@ import aiRoutes from "./routes/aiRoutes";
 import paramsRoutes from "./routes/paramsRoutes";
 import calcAutoRoutes from "./routes/calcAutoRoutes";
 import { authMiddleware } from "./auth";
+import { getTelemetry, averageParseMs } from "../lib/cadTelemetry";
 
 const app = express();
 
@@ -94,6 +95,22 @@ app.use("/api/user", userRoutes);
 app.use("/api/ai", aiLimiter, aiRoutes);
 app.use("/api/params", paramsRoutes);
 app.use("/api/calc", calcAutoRoutes);
+
+// Dev-only telemetry endpoint for debug in non-production or when explicitly enabled
+const devEnabled = process.env.NODE_ENV !== "production" || process.env.ENABLE_DEV_ENDPOINTS === "1";
+if (devEnabled) {
+  app.get("/dev/cad-telemetry", (_req, res) => {
+    try {
+      res.json({
+        ...getTelemetry(),
+        averageParseMs: averageParseMs(),
+        ts: Date.now(),
+      });
+    } catch (e) {
+      res.status(500).json({ error: 'failed to read telemetry' });
+    }
+  });
+}
 
 // Start
 const PORT = process.env.PORT || 4000;

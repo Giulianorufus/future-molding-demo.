@@ -8,11 +8,13 @@ export default function ParametriPage() {
   const error = useParametriStore((s) => s.error);
   // cast as the extended CalculationResult that may contain optional profiles
   const _res = result as unknown as CalculationResultWithProfiles;
-  console.log("profiles", {
-    inj: _res?.injectionProfile?.steps?.length ?? 0,
-    pack: _res?.packingProfile?.steps?.length ?? 0,
-    sw: _res?.switchover ?? _res?.switchover_volumePercent ?? null,
-  });
+  if (import.meta.env.DEV) {
+    console.log("profiles", {
+      inj: _res?.injectionProfile?.steps?.length ?? 0,
+      pack: _res?.packingProfile?.steps?.length ?? 0,
+      sw: _res?.switchover ?? _res?.switchover_volumePercent ?? null,
+    });
+  }
 
   // Debug helper: if result is not available yet, try to read cached last result from localStorage
   // and print its profiles so we can debug wiring without performing full UI actions.

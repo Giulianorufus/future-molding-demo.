@@ -5,6 +5,7 @@ export type RecipeMeta = {
   timestampISO: string;
   appVersion: string;
   pressCatalogVersion: string;
+  recipeFingerprint?: string;
   materialsVersion: string;
 };
 

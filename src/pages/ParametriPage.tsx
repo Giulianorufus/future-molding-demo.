@@ -1,6 +1,10 @@
 import { useParametriStore } from "../stores/parametriStore";
 import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
+import SimilarCasesPanel from "../components/SimilarCasesPanel";
+import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
+import { useCaseStore } from "../stores/caseStore";
 import type { CalculationResultWithProfiles } from "../engine/calcEngine";
+import type { CaseRecord } from "../engine/caseBased/caseTypes";
 
 export default function ParametriPage() {
   const result = useParametriStore((s) => s.result);
@@ -123,6 +127,50 @@ export default function ParametriPage() {
         </div>
       )}
       <ProcessProfilesPanel result={result} />
+
+      {/* Similar cases: minimal dev seed + panel */}
+      {/* Similar cases panel - build a best-effort snapshot from available data */}
+      <SimilarCasesPanel snapshot={buildRecipeSnapshot({ projectName: null, input: {}, output: {} })} />
+
+      {/* DEV-only seeding: lightweight, does not depend on result typings */}
+      {import.meta.env.DEV && (() => {
+        const { bulkAddCases, cases } = useCaseStore((s) => ({ bulkAddCases: s.bulkAddCases, cases: s.cases }));
+        if (cases.length === 0) {
+          const now = new Date().toISOString();
+          const seed: CaseRecord[] = [
+            {
+              id: "devcase-1-0001",
+              createdAt: now,
+              recipeFingerprint: "dev-fp-1",
+              materialId: "DEV_MAT",
+              pressId: "DEV_PRESS",
+              screwDiameter_mm: 20,
+              geometryHash: undefined,
+              projectedArea_cm2: undefined,
+              shotVolume_cm3: undefined,
+              recipeSnapshot: buildRecipeSnapshot({ projectName: "dev", input: {}, output: {} }),
+              outcome: { producedQty: 1000, scrapQty: 10, scrapRate_pct: 1 },
+            },
+            {
+              id: "devcase-2-0002",
+              createdAt: now,
+              recipeFingerprint: "dev-fp-2",
+              materialId: "DEV_MAT",
+              pressId: "DEV_PRESS",
+              screwDiameter_mm: 20,
+              geometryHash: undefined,
+              projectedArea_cm2: undefined,
+              shotVolume_cm3: undefined,
+              recipeSnapshot: buildRecipeSnapshot({ projectName: "dev2", input: {}, output: {} }),
+              outcome: { producedQty: 500, scrapQty: 25, scrapRate_pct: 5 },
+            },
+          ];
+          try {
+            bulkAddCases(seed);
+          } catch (_) {}
+        }
+        return null;
+      })()}
     </div>
   );
 }

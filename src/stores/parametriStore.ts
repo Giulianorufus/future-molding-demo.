@@ -30,6 +30,11 @@ export type ParametriState = {
   }
   baselineCaseId?: string | undefined
   baselineSnapshot?: RecipeSnapshot | undefined
+  baselineProfiles?: {
+    injectionProfile?: any[] | undefined
+    packingProfile?: any[] | undefined
+    switchover?: number | null
+  } | undefined
   applyBaselineFromCase: (c: CaseRecord) => void
   ricalcola: (input: CalculationInput) => Promise<void>
   reset: () => void
@@ -46,6 +51,7 @@ export const useParametriStore = create<ParametriState>((set) => ({
   lastDefectFix: null,
   baselineCaseId: undefined,
   baselineSnapshot: undefined,
+  baselineProfiles: undefined,
   async ricalcola(input) {
     set({ isCalculating: true, loading: true, error: null })
     try {
@@ -162,6 +168,19 @@ export const useParametriStore = create<ParametriState>((set) => ({
         baselineCaseId: c.id,
         baselineSnapshot: c.recipeSnapshot as RecipeSnapshot,
       }))
+
+      try {
+        const out: any = (c.recipeSnapshot as any)?.output ?? {}
+        const profiles: any = {}
+        if (out?.injectionProfile) profiles.injectionProfile = out.injectionProfile
+        if (out?.packingProfile) profiles.packingProfile = out.packingProfile
+        // switchover can be named in multiple ways
+        profiles.switchover = out?.switchover ?? out?.switchover_volumePercent ?? null
+        // only set if any profile present
+        if (profiles.injectionProfile || profiles.packingProfile || profiles.switchover !== null) {
+          set((s: any) => ({ ...s, baselineProfiles: profiles }))
+        }
+      } catch (_e) {}
 
       // also update press/material selection in their stores (idempotent)
       try {

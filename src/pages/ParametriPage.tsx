@@ -13,6 +13,7 @@ export default function ParametriPage() {
   const error = useParametriStore((s) => s.error);
   // cast as the extended CalculationResult that may contain optional profiles
   const _res = result as unknown as CalculationResultWithProfiles;
+  const baselineProfiles = useParametriStore((s) => (s as any).baselineProfiles);
   if (import.meta.env.DEV) {
     console.log("profiles", {
       inj: _res?.injectionProfile?.steps?.length ?? 0,
@@ -169,6 +170,14 @@ export default function ParametriPage() {
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+      {/* Baseline profiles banner */}
+      {baselineProfiles && (
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+          <strong>Baseline profili applicata:</strong>
+          <div className="mt-1">Injection steps: {baselineProfiles.injectionProfile ? baselineProfiles.injectionProfile.length : 0}</div>
+          <div>Switchover: {baselineProfiles.switchover != null ? `${baselineProfiles.switchover}%` : '—'}</div>
         </div>
       )}
       <ProcessProfilesPanel result={result} />

@@ -3,8 +3,17 @@ import * as THREE from 'three';
 import { parseCAD } from './cadParser';
 import { getCadAnalysisCached, setCadAnalysisCached } from './cadAnalysisCache';
 import { cadFallbackResult } from './cadFallback';
-// Timeout for parseCAD (ms)
-const PARSE_TIMEOUT_MS = 1500;
+// Parse timeout configuration
+const DEFAULT_PARSE_TIMEOUT_MS = 15000;
+
+function getParseTimeoutMs(): number {
+  // Jest/Node only (CI) override via env var
+  if (typeof process !== 'undefined' && (process as any)?.env?.CAD_PARSE_TIMEOUT_MS) {
+    const n = Number((process as any).env.CAD_PARSE_TIMEOUT_MS);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return DEFAULT_PARSE_TIMEOUT_MS;
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: any;
@@ -55,7 +64,7 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
       const t0 = performance.now();
       let fallbackUsed = false;
       // Run parse with timeout to avoid blocking the app; fallback on timeout
-      const geom = await withTimeout(parseCAD(file, onProgress), PARSE_TIMEOUT_MS);
+      const geom = await withTimeout(parseCAD(file, onProgress), getParseTimeoutMs());
       const t1 = performance.now();
       try {
         recordParseMetric({ id: Math.random().toString(36).slice(2,9), fileName: file.name, fileSizeBytes: file.size, durationMs: Math.round(t1 - t0), timestamp: Date.now(), success: true, fallbackUsed });

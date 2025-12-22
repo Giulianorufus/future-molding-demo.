@@ -3,6 +3,16 @@ import * as THREE from 'three';
 import { parseCAD } from './cadParser';
 import { getCadAnalysisCached, setCadAnalysisCached } from './cadAnalysisCache';
 import { cadFallbackResult } from './cadFallback';
+// Timeout for parseCAD (ms)
+const PARSE_TIMEOUT_MS = 1500;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: any;
+  return new Promise<T>((resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('parseCAD timeout')), ms);
+    p.then((v) => { clearTimeout(timer); resolve(v); }).catch((e) => { clearTimeout(timer); reject(e); });
+  });
+}
 import * as log from '@/lib/log';
 import { recordParseMetric } from '@/services/metrics';
 
@@ -44,7 +54,8 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
     try {
       const t0 = performance.now();
       let fallbackUsed = false;
-      const geom = await parseCAD(file, onProgress);
+      // Run parse with timeout to avoid blocking the app; fallback on timeout
+      const geom = await withTimeout(parseCAD(file, onProgress), PARSE_TIMEOUT_MS);
       const t1 = performance.now();
       try {
         recordParseMetric({ id: Math.random().toString(36).slice(2,9), fileName: file.name, fileSizeBytes: file.size, durationMs: Math.round(t1 - t0), timestamp: Date.now(), success: true, fallbackUsed });

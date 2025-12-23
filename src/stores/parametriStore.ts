@@ -4,6 +4,7 @@ import type { RecipeSnapshot } from '../engine/recipeExport/recipeTypes'
 import { calcolaParametri, type CalculationInput, type CalculationResult } from '../core/calcEngine'
 import { logInput, logOutput } from '../core/log'
 import { getGateFreezeRecommendation, type GateFreezeRec } from '../engine/gateFreeze/loadGateFreezePolicy'
+import { buildPackingProfile } from '../engine/profiles'
 import { useDrawingStore } from './drawingStore'
 import { usePressStore } from './pressStore'
 import { useMaterialStore } from './materialStore'
@@ -37,6 +38,11 @@ export type ParametriState = {
     switchover?: number | null
   } | undefined
   gateFreezeRecommendation?: GateFreezeRec | null
+  gateFreezeApplied?: boolean
+  gateFreezeAppliedAtISO?: string | null
+  gateFreezePreviousHold_s?: number | null
+  applyGateFreezeIfEligible: (rec?: GateFreezeRec | null) => boolean
+  revertGateFreeze: () => boolean
   applyBaselineFromCase: (c: CaseRecord) => void
   ricalcola: (input: CalculationInput) => Promise<void>
   reset: () => void
@@ -158,11 +164,8 @@ export const useParametriStore = create<ParametriState>((set) => ({
       // attempt to enrich result with gate-freeze recommendation if a fingerprint is available
       try {
         let fingerprint: string | null = null
-        // prefer explicit baseline snapshot metadata
         try { fingerprint = (useParametriStore as any).getState?.().baselineSnapshot?.meta?.recipeFingerprint ?? null } catch (_) { fingerprint = null }
-        // fallback: try to read from result.meta if present
         try { if (!fingerprint && (res as any)?.meta?.recipeFingerprint) fingerprint = (res as any).meta.recipeFingerprint } catch (_) {}
-        // last effort: localStorage cached lastCalcResult meta
         try {
           if (!fingerprint && typeof window !== 'undefined' && window.localStorage) {
             const raw = window.localStorage.getItem('fm:lastCalcResult')
@@ -178,10 +181,52 @@ export const useParametriStore = create<ParametriState>((set) => ({
           try { rec = await getGateFreezeRecommendation(fingerprint) } catch (_) { rec = null }
         }
 
+        // store basic recommendation
         set({ lastInput: input, result: res, isCalculating: false, loading: false, gateFreezeRecommendation: rec })
+
+        // Non-invasivo: applica automaticamente solo se ricetta trova raccomandazione e passa guardrail
+        try {
+          const stateAny: any = (useParametriStore as any).getState()
+          // guardrail checks
+          if (rec && typeof rec.recommended_hold_s === 'number') {
+            const conf = Number(rec.confidence ?? 0)
+            const pts = Number(rec.points ?? 0)
+            const hold = Number(rec.recommended_hold_s)
+            const minHoldOk = hold >= 0.1
+            const confOk = conf >= 0.7
+            const ptsOk = pts >= 10
+            // do not override if user already has packingProfile present
+            const hasUserPacking = !!(res as any)?.packingProfile
+            // limit upper bound: packingProfile.totalTime_s if exists else 10s
+            const upperOk = hold <= 10
+            if (minHoldOk && confOk && ptsOk && upperOk && !hasUserPacking) {
+              try {
+                // build default packing profile and scale its times to match recommended hold
+                const pbInput: any = {
+                  thicknessAvg_mm: (stateAny?.cadAnalysisMeta?.thickness_mm) ?? undefined,
+                  materialId: (stateAny?.baselineSnapshot?.meta?.materialId) ?? undefined,
+                  targetInjectionSpeed_cm3_s: (res as any)?.suggestedInjectionSpeedCm3s ?? (res as any)?.injectionSpeedCm3s ?? 50,
+                  maxInjectionSpeed_cm3_s:  (stateAny?.press?.maxSpeedCm3s) ?? ((stateAny?.press?.maxInjectionSpeed_cm3_s) ?? ((res as any)?.velIniezione ?? 100)),
+                  peakInjectionPressure_bar: (res as any)?.packPressureBar ?? (res as any)?.packPressione ?? 50,
+                  maxInjectionPressure_bar: (stateAny?.press?.maxPressureBar) ?? 400,
+                }
+                const built = buildPackingProfile(pbInput as any)
+                const defaultTotal = built.holdingTimeTotal_s || built.holdingTimeTotal_s === 0 ? built.holdingTimeTotal_s : null
+                // scale factor: recommended / defaultTotal (if defaultTotal present)
+                const scale = defaultTotal && defaultTotal > 0 ? (hold / defaultTotal) : 1
+                const scaledSteps = built.packingProfile.map((s: any) => ({ step: s.step, pressure_bar: s.pressure_bar, time_s: Math.round((s.time_s * scale) * 10) / 10 }))
+                // compute previous total (if any)
+                const prevTotal = Array.isArray((res as any)?.packingProfile?.steps) ? (res as any).packingProfile.steps.reduce((a: number, b: any) => a + (Number(b.time_s) || 0), 0) : null
+                // apply into result
+                ;(res as any).packingProfile = { steps: scaledSteps }
+                // mark applied metadata in store
+                ;(useParametriStore as any).setState({ lastCalcResult: res, gateFreezeApplied: true, gateFreezeAppliedAtISO: new Date().toISOString(), gateFreezePreviousHold_s: prevTotal })
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
       } catch (e) {
-        // if anything fails, still set result without recommendation
-        set({ lastInput: input, result: res, isCalculating: false, loading: false })
+        // ignore enrichment failures
       }
     } catch (err: any) {
       set({ error: String(err?.message ?? err), isCalculating: false, loading: false })
@@ -189,6 +234,70 @@ export const useParametriStore = create<ParametriState>((set) => ({
   },
   reset() {
     set({ lastInput: null, result: null, isCalculating: false, loading: false, error: null, lastDefectFix: null })
+  },
+  applyGateFreezeIfEligible(rec) {
+    try {
+      const stateAny: any = (useParametriStore as any).getState()
+      const res: any = stateAny.result ?? stateAny.lastCalcResult
+      if (!res || !rec) return false
+      const conf = Number(rec.confidence ?? 0)
+      const pts = Number(rec.points ?? 0)
+      const hold = Number(rec.recommended_hold_s)
+      if (!(hold >= 0.1 && conf >= 0.7 && pts >= 10)) return false
+      // do not override if packingProfile exists
+      if (res.packingProfile && Array.isArray(res.packingProfile.steps) && res.packingProfile.steps.length) return false
+      // upper bound
+      if (!(hold <= 10)) return false
+      // build and apply
+      const pbInput: any = {
+        thicknessAvg_mm: (stateAny?.cadAnalysisMeta?.thickness_mm) ?? undefined,
+        materialId: (stateAny?.baselineSnapshot?.meta?.materialId) ?? undefined,
+        targetInjectionSpeed_cm3_s: res.suggestedInjectionSpeedCm3s ?? res.injectionSpeedCm3s ?? 50,
+        maxInjectionSpeed_cm3_s: (stateAny?.press?.maxSpeedCm3s) ?? (res.suggestedInjectionSpeedCm3s ?? 100),
+        peakInjectionPressure_bar: res.packPressureBar ?? res.packPressione ?? 50,
+        maxInjectionPressure_bar: (stateAny?.press?.maxPressureBar) ?? 400,
+      }
+      const built = buildPackingProfile(pbInput as any)
+      const defaultTotal = built.holdingTimeTotal_s || 0
+      const scale = defaultTotal > 0 ? (hold / defaultTotal) : 1
+      const scaledSteps = built.packingProfile.map((s: any) => ({ step: s.step, pressure_bar: s.pressure_bar, time_s: Math.round((s.time_s * scale) * 10) / 10 }))
+      const prevTotal = Array.isArray(res?.packingProfile?.steps) ? res.packingProfile.steps.reduce((a: number, b: any) => a + (Number(b.time_s) || 0), 0) : null
+      // apply
+      const nextRes = { ...(res as any), packingProfile: { steps: scaledSteps } }
+      ;(useParametriStore as any).setState({ result: nextRes, lastCalcResult: nextRes, gateFreezeApplied: true, gateFreezeAppliedAtISO: new Date().toISOString(), gateFreezePreviousHold_s: prevTotal })
+      return true
+    } catch (e) {
+      return false
+    }
+  },
+  revertGateFreeze() {
+    try {
+      const stateAny: any = (useParametriStore as any).getState()
+      const res: any = stateAny.result ?? stateAny.lastCalcResult
+      if (!res) return false
+      const prev = stateAny.gateFreezePreviousHold_s
+      if (prev == null) {
+        // remove applied packingProfile
+        const nextRes = { ...(res as any) }
+        delete nextRes.packingProfile
+        ;(useParametriStore as any).setState({ result: nextRes, lastCalcResult: nextRes, gateFreezeApplied: false, gateFreezeAppliedAtISO: null, gateFreezePreviousHold_s: null })
+        return true
+      }
+      // if prev present, scale current profile back to prev total
+      if (res.packingProfile && Array.isArray(res.packingProfile.steps)) {
+        const currentTotal = res.packingProfile.steps.reduce((a: number, b: any) => a + (Number(b.time_s) || 0), 0)
+        if (currentTotal > 0) {
+          const scale = prev / currentTotal
+          const restored = res.packingProfile.steps.map((s: any) => ({ step: s.step, pressure_bar: s.pressure_bar, time_s: Math.round((s.time_s * scale) * 10) / 10 }))
+          const nextRes = { ...(res as any), packingProfile: { steps: restored } }
+          ;(useParametriStore as any).setState({ result: nextRes, lastCalcResult: nextRes, gateFreezeApplied: false, gateFreezeAppliedAtISO: null, gateFreezePreviousHold_s: null })
+          return true
+        }
+      }
+      return false
+    } catch (e) {
+      return false
+    }
   },
   applyBaselineFromCase(c) {
     try {

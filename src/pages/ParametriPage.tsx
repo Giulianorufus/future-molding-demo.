@@ -15,6 +15,9 @@ export default function ParametriPage() {
   const _res = result as unknown as CalculationResultWithProfiles;
   const baselineProfiles = useParametriStore((s) => (s as any).baselineProfiles);
   const gateFreeze = useParametriStore((s) => (s as any).gateFreezeRecommendation);
+  const gateFreezeApplied = useParametriStore((s) => (s as any).gateFreezeApplied);
+  const applyGateFreezeIfEligible = useParametriStore((s) => (s as any).applyGateFreezeIfEligible);
+  const revertGateFreeze = useParametriStore((s) => (s as any).revertGateFreeze);
   if (import.meta.env.DEV) {
     console.log("profiles", {
       inj: _res?.injectionProfile?.steps?.length ?? 0,
@@ -177,14 +180,28 @@ export default function ParametriPage() {
             <h3 className="font-semibold">Gate Freeze</h3>
             {gateFreeze ? (
               <div className="text-sm text-gray-800 mt-1">
-                Holding consigliato (Gate Freeze): <strong>{gateFreeze.recommended_hold_s} s</strong>
-                {gateFreeze.confidence != null && (
-                  <> (conf {gateFreeze.confidence})</>
+                {gateFreezeApplied ? (
+                  <div>
+                    <div>Applicato: <strong>{gateFreeze.recommended_hold_s} s</strong></div>
+                    <div className="mt-2">
+                      <button type="button" onClick={() => revertGateFreeze()} className="px-2 py-1 bg-gray-200 rounded text-sm">Ripristina</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    Holding consigliato (Gate Freeze): <strong>{gateFreeze.recommended_hold_s} s</strong>
+                    {gateFreeze.confidence != null && (
+                      <> (conf {gateFreeze.confidence})</>
+                    )}
+                    {gateFreeze.points != null && (
+                      <> — punti {gateFreeze.points}</>
+                    )}
+                    {gateFreeze.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.reason}</div>}
+                    <div className="mt-2">
+                      <button type="button" onClick={() => applyGateFreezeIfEligible(gateFreeze)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Applica</button>
+                    </div>
+                  </div>
                 )}
-                {gateFreeze.points != null && (
-                  <> — punti {gateFreeze.points}</>
-                )}
-                {gateFreeze.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.reason}</div>}
               </div>
             ) : (
               <div className="text-sm text-gray-500 mt-1">Nessuna raccomandazione disponibile per questo fingerprint</div>

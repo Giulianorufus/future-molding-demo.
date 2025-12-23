@@ -4,7 +4,7 @@ import SimilarCasesPanel from "../components/SimilarCasesPanel";
 import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
 import { useCaseStore } from "../stores/caseStore";
 import { useEffect } from "react";
-import { getGateFreezeRecommendation } from "../engine/gateFreeze/loadGateFreezePolicy";
+import { getFingerprintPolicy } from "../engine/policy/loadFingerprintPolicy";
 import type { CalculationResultWithProfiles } from "../engine/calcEngine";
 import type { CaseRecord } from "../engine/caseBased/caseTypes";
 
@@ -100,9 +100,8 @@ export default function ParametriPage() {
         try { fingerprint = (result as any)?.meta?.recipeFingerprint ?? null } catch (_) { fingerprint = null }
         try { if (!fingerprint && typeof window !== 'undefined') { const raw = window.localStorage.getItem('fm:lastCalcResult'); if (raw) { const parsed = JSON.parse(raw); fingerprint = parsed?.meta?.recipeFingerprint ?? null } } } catch (_) {}
         if (fingerprint) {
-          const rec = await getGateFreezeRecommendation(fingerprint)
+          const rec = await getFingerprintPolicy(fingerprint)
           if (rec) {
-            // set into store so UI updates
             try { (useParametriStore as any).setState({ gateFreezeRecommendation: rec }) } catch (_) {}
           }
         }
@@ -210,18 +209,35 @@ export default function ParametriPage() {
                   </div>
                 ) : (
                   <div>
-                    <div data-testid="gate-freeze-status">Holding consigliato (Gate Freeze): <strong>{gateFreeze.recommended_hold_s} s</strong>
-                      {gateFreeze.confidence != null && (
-                        <> (conf {gateFreeze.confidence})</>
-                      )}
-                      {gateFreeze.points != null && (
-                        <> — punti {gateFreeze.points}</>
-                      )}
-                    </div>
-                    {gateFreeze.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.reason}</div>}
+                    {/* gateFreeze subsection */}
+                    {gateFreeze.gateFreeze && (
+                      <div data-testid="gate-freeze-status">Holding consigliato (Gate Freeze): <strong>{gateFreeze.gateFreeze.recommended_hold_s} s</strong>
+                        {gateFreeze.gateFreeze.confidence != null && (
+                          <> (conf {gateFreeze.gateFreeze.confidence})</>
+                        )}
+                        {gateFreeze.gateFreeze.points != null && (
+                          <> — punti {gateFreeze.gateFreeze.points}</>
+                        )}
+                      </div>
+                    )}
+                    {gateFreeze.gateFreeze?.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.gateFreeze.reason}</div>}
                     <div className="mt-2">
-                      <button data-testid="gate-freeze-apply" type="button" onClick={() => applyGateFreezeIfEligible(gateFreeze)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Applica</button>
+                      <button data-testid="gate-freeze-apply" type="button" onClick={() => applyGateFreezeIfEligible(gateFreeze.gateFreeze ?? null)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Applica</button>
                     </div>
+
+                    {/* packing subsection: suggestion only */}
+                    {gateFreeze.packing && (
+                      <div className="mt-3 text-sm text-gray-800" data-testid="packing-suggestion">
+                        Holding pressure consigliata (Packing): <strong>{gateFreeze.packing.recommended_holdingPressure_bar} bar</strong>
+                        {gateFreeze.packing.confidence != null && (
+                          <> (conf {gateFreeze.packing.confidence})</>
+                        )}
+                        {gateFreeze.packing.points != null && (
+                          <> — punti {gateFreeze.packing.points}</>
+                        )}
+                        {gateFreeze.packing.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.packing.reason}</div>}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

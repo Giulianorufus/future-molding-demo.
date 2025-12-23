@@ -3,7 +3,7 @@ import type { CaseRecord } from '../engine/caseBased'
 import type { RecipeSnapshot } from '../engine/recipeExport/recipeTypes'
 import { calcolaParametri, type CalculationInput, type CalculationResult } from '../core/calcEngine'
 import { logInput, logOutput } from '../core/log'
-import { getGateFreezeRecommendation, type GateFreezeRec } from '../engine/gateFreeze/loadGateFreezePolicy'
+import { getFingerprintPolicy, type FingerprintPolicyRec } from '../engine/policy/loadFingerprintPolicy'
 import { buildPackingProfile } from '../engine/profiles'
 import { useDrawingStore } from './drawingStore'
 import { usePressStore } from './pressStore'
@@ -37,11 +37,11 @@ export type ParametriState = {
     packingProfile?: any[] | undefined
     switchover?: number | null
   } | undefined
-  gateFreezeRecommendation?: GateFreezeRec | null
+  gateFreezeRecommendation?: FingerprintPolicyRec | null
   gateFreezeApplied?: boolean
   gateFreezeAppliedAtISO?: string | null
   gateFreezePreviousHold_s?: number | null
-  applyGateFreezeIfEligible: (rec?: GateFreezeRec | null) => boolean
+  applyGateFreezeIfEligible: (rec?: any | null) => boolean
   revertGateFreeze: () => boolean
   applyBaselineFromCase: (c: CaseRecord) => void
   ricalcola: (input: CalculationInput) => Promise<void>
@@ -176,22 +176,24 @@ export const useParametriStore = create<ParametriState>((set) => ({
           }
         } catch (_) {}
 
-        let rec: GateFreezeRec | null = null
-        if (fingerprint) {
-          try { rec = await getGateFreezeRecommendation(fingerprint) } catch (_) { rec = null }
-        }
+          let rec: FingerprintPolicyRec | null = null
+          if (fingerprint) {
+            try { rec = await getFingerprintPolicy(fingerprint) } catch (_) { rec = null }
+          }
 
-        // store basic recommendation
-        set({ lastInput: input, result: res, isCalculating: false, loading: false, gateFreezeRecommendation: rec })
+          // store basic recommendation (may include gateFreeze and/or packing)
+          set({ lastInput: input, result: res, isCalculating: false, loading: false, gateFreezeRecommendation: rec })
 
         // Non-invasivo: applica automaticamente solo se ricetta trova raccomandazione e passa guardrail
         try {
           const stateAny: any = (useParametriStore as any).getState()
           // guardrail checks
-          if (rec && typeof rec.recommended_hold_s === 'number') {
-            const conf = Number(rec.confidence ?? 0)
-            const pts = Number(rec.points ?? 0)
-            const hold = Number(rec.recommended_hold_s)
+          // rec may be unified fingerprint policy; check gateFreeze subsection
+          const gf = rec?.gateFreeze ?? null
+          if (gf && typeof gf.recommended_hold_s === 'number') {
+            const conf = Number(gf.confidence ?? 0)
+            const pts = Number(gf.points ?? 0)
+            const hold = Number(gf.recommended_hold_s)
             const minHoldOk = hold >= 0.1
             const confOk = conf >= 0.7
             const ptsOk = pts >= 10

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'fs'
 import path from 'path'
+import { appendCaseFromImport } from './appendCaseFromImport.mjs'
 
 function detectDelimiter(text) {
   const first = text.split('\n')[0] || ''
@@ -69,8 +70,9 @@ async function main() {
   let existing = []
   try { existing = JSON.parse(fs.readFileSync(kbFile, 'utf8') || '[]') } catch (_) { existing = [] }
 
-  const appended = existing.concat(cases)
-  fs.writeFileSync(kbFile, JSON.stringify(appended, null, 2), 'utf8')
+  for (const c of cases) {
+    appendCaseFromImport(c)
+  }
   console.log('Appended', cases.length, 'cases to', kbFile)
 }
 

@@ -338,6 +338,16 @@ export const useParametriStore = create<ParametriState>((set) => ({
 // debounced e idempotente quando gli input cambiano. Non eseguiamo la sottoscrizione
 // durante SSR (controllo window) e la eseguiamo una sola volta.
 if (typeof window !== 'undefined') {
+  // On client start, seed result from localStorage lastCalcResult when available.
+  try {
+    const raw = window.localStorage.getItem('fm:lastCalcResult')
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        ;(useParametriStore as any).setState({ lastCalcResult: parsed, result: parsed })
+      } catch (_) {}
+    }
+  } catch (_) {}
   let orchestrationInitialized = (useParametriStore as any)._orchestrationInitialized
   if (!orchestrationInitialized) {
     ;(useParametriStore as any)._orchestrationInitialized = true

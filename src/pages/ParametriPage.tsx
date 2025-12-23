@@ -4,6 +4,7 @@ import SimilarCasesPanel from "../components/SimilarCasesPanel";
 import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
 import { useCaseStore } from "../stores/caseStore";
 import { useEffect } from "react";
+import { getGateFreezeRecommendation } from "../engine/gateFreeze/loadGateFreezePolicy";
 import type { CalculationResultWithProfiles } from "../engine/calcEngine";
 import type { CaseRecord } from "../engine/caseBased/caseTypes";
 
@@ -88,6 +89,26 @@ export default function ParametriPage() {
       } catch (_) {}
     }
   }, [cases.length, bulkAddCases]);
+
+  // If we have a result but no gateFreeze recommendation yet, try to enrich from policy
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!result) return
+        if (gateFreeze) return
+        let fingerprint: string | null = null
+        try { fingerprint = (result as any)?.meta?.recipeFingerprint ?? null } catch (_) { fingerprint = null }
+        try { if (!fingerprint && typeof window !== 'undefined') { const raw = window.localStorage.getItem('fm:lastCalcResult'); if (raw) { const parsed = JSON.parse(raw); fingerprint = parsed?.meta?.recipeFingerprint ?? null } } } catch (_) {}
+        if (fingerprint) {
+          const rec = await getGateFreezeRecommendation(fingerprint)
+          if (rec) {
+            // set into store so UI updates
+            try { (useParametriStore as any).setState({ gateFreezeRecommendation: rec }) } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    })()
+  }, [result, gateFreeze])
 
   return (
     <div className="p-8">
@@ -176,29 +197,30 @@ export default function ParametriPage() {
           </table>
 
           {/* Gate Freeze recommendation (minimal, read-only suggestion) */}
-          <div className="mt-4">
+          <div className="mt-4" data-testid="gate-freeze-panel">
             <h3 className="font-semibold">Gate Freeze</h3>
             {gateFreeze ? (
               <div className="text-sm text-gray-800 mt-1">
                 {gateFreezeApplied ? (
                   <div>
-                    <div>Applicato: <strong>{gateFreeze.recommended_hold_s} s</strong></div>
+                    <div data-testid="gate-freeze-status">Applicato: <strong>{gateFreeze.recommended_hold_s} s</strong></div>
                     <div className="mt-2">
-                      <button type="button" onClick={() => revertGateFreeze()} className="px-2 py-1 bg-gray-200 rounded text-sm">Ripristina</button>
+                      <button data-testid="gate-freeze-revert" type="button" onClick={() => revertGateFreeze()} className="px-2 py-1 bg-gray-200 rounded text-sm">Ripristina</button>
                     </div>
                   </div>
                 ) : (
                   <div>
-                    Holding consigliato (Gate Freeze): <strong>{gateFreeze.recommended_hold_s} s</strong>
-                    {gateFreeze.confidence != null && (
-                      <> (conf {gateFreeze.confidence})</>
-                    )}
-                    {gateFreeze.points != null && (
-                      <> — punti {gateFreeze.points}</>
-                    )}
+                    <div data-testid="gate-freeze-status">Holding consigliato (Gate Freeze): <strong>{gateFreeze.recommended_hold_s} s</strong>
+                      {gateFreeze.confidence != null && (
+                        <> (conf {gateFreeze.confidence})</>
+                      )}
+                      {gateFreeze.points != null && (
+                        <> — punti {gateFreeze.points}</>
+                      )}
+                    </div>
                     {gateFreeze.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.reason}</div>}
                     <div className="mt-2">
-                      <button type="button" onClick={() => applyGateFreezeIfEligible(gateFreeze)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Applica</button>
+                      <button data-testid="gate-freeze-apply" type="button" onClick={() => applyGateFreezeIfEligible(gateFreeze)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Applica</button>
                     </div>
                   </div>
                 )}

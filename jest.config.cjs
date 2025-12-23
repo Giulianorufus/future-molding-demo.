@@ -14,6 +14,7 @@ module.exports = {
   testPathIgnorePatterns: [
     "<rootDir>/project-full-preview/",
     "<rootDir>/vendor/",
+    "<rootDir>/e2e/",
     "<rootDir>/tests/e2e/",
     "<rootDir>/playwright/",
     "\\.int\\.test\\.ts$",

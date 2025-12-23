@@ -116,4 +116,12 @@ npm run samples:recipe # genera samples/recipe.sample.*
 npm run gate:freeze:publish # rigenera e pubblica public/gate-freeze/recommended_by_recipeFingerprint.json (vedi gate-freeze-study.md)
 ```
 
+## Gate Freeze policy
+
+- La policy Gate Freeze genera raccomandazioni di holding time per `recipeFingerprint` (plateau peso vs holding) e le pubblica in `public/gate-freeze/recommended_by_recipeFingerprint.json`.
+- In UI (Parametri) la raccomandazione può essere applicata con guardrail (confidence/points/limiti) ed è sempre reversibile.
+- I CSV di produzione usati per generare la policy **non devono essere committati** nel repo (contengono dati di processo).
+- Mantieni i dati reali in percorsi locali (es. `data/production/`) e pubblica solo il JSON “policy” risultante.
+- Se una raccomandazione non esiste per un fingerprint, la UI non applica nulla.
+
 I sample generati sono in `samples/`. File temporanei di debug vengono scritti in `tmp/` (ignorata da git).

@@ -1,6 +1,16 @@
 import request from "supertest";
 
 describe("GET /dev/cad-telemetry", () => {
+  const originalLog = console.log;
+
+  beforeAll(() => {
+    console.log = () => {};
+  });
+
+  afterAll(() => {
+    console.log = originalLog;
+  });
+
   const OLD_ENV = process.env;
 
   beforeEach(() => {

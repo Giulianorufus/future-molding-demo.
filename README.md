@@ -125,6 +125,7 @@ npm test
 npm run smoke:pdf      # esegue lo smoke rapido (usa tsx loader)
 npm run samples:recipe # genera samples/recipe.sample.*
 npm run gate:freeze:publish # rigenera e pubblica public/gate-freeze/recommended_by_recipeFingerprint.json (vedi gate-freeze-study.md)
+npm run policy:publish # append KB -> build -> pubblica public/policy/recommended_by_recipeFingerprint.json (v. docs/KB.md)
 ```
 
 ## Gate Freeze policy
@@ -140,5 +141,7 @@ I sample generati sono in `samples/`. File temporanei di debug vengono scritti i
 ## Knowledge Base (KB)
 
 Vedi la documentazione operativa: [docs/KB.md](docs/KB.md) — contiene il workflow per popolare la KB locale (`data/kb/cases.json`) e generare la `public/policy/recommended_by_recipeFingerprint.json`.
+
+- Dettagli e workflow KB: vedi `docs/KB.md` (sezione Publish policy)
 
 ````

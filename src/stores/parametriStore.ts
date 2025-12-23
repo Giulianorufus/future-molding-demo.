@@ -3,6 +3,7 @@ import type { CaseRecord } from '../engine/caseBased'
 import type { RecipeSnapshot } from '../engine/recipeExport/recipeTypes'
 import { calcolaParametri, type CalculationInput, type CalculationResult } from '../core/calcEngine'
 import { logInput, logOutput } from '../core/log'
+import { getGateFreezeRecommendation, type GateFreezeRec } from '../engine/gateFreeze/loadGateFreezePolicy'
 import { useDrawingStore } from './drawingStore'
 import { usePressStore } from './pressStore'
 import { useMaterialStore } from './materialStore'
@@ -35,6 +36,7 @@ export type ParametriState = {
     packingProfile?: any[] | undefined
     switchover?: number | null
   } | undefined
+  gateFreezeRecommendation?: GateFreezeRec | null
   applyBaselineFromCase: (c: CaseRecord) => void
   ricalcola: (input: CalculationInput) => Promise<void>
   reset: () => void
@@ -152,7 +154,35 @@ export const useParametriStore = create<ParametriState>((set) => ({
             }
           } catch (_) {}
       try { logOutput?.(res) } catch (_) {}
-      set({ lastInput: input, result: res, isCalculating: false, loading: false })
+
+      // attempt to enrich result with gate-freeze recommendation if a fingerprint is available
+      try {
+        let fingerprint: string | null = null
+        // prefer explicit baseline snapshot metadata
+        try { fingerprint = (useParametriStore as any).getState?.().baselineSnapshot?.meta?.recipeFingerprint ?? null } catch (_) { fingerprint = null }
+        // fallback: try to read from result.meta if present
+        try { if (!fingerprint && (res as any)?.meta?.recipeFingerprint) fingerprint = (res as any).meta.recipeFingerprint } catch (_) {}
+        // last effort: localStorage cached lastCalcResult meta
+        try {
+          if (!fingerprint && typeof window !== 'undefined' && window.localStorage) {
+            const raw = window.localStorage.getItem('fm:lastCalcResult')
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              fingerprint = parsed?.meta?.recipeFingerprint ?? null
+            }
+          }
+        } catch (_) {}
+
+        let rec: GateFreezeRec | null = null
+        if (fingerprint) {
+          try { rec = await getGateFreezeRecommendation(fingerprint) } catch (_) { rec = null }
+        }
+
+        set({ lastInput: input, result: res, isCalculating: false, loading: false, gateFreezeRecommendation: rec })
+      } catch (e) {
+        // if anything fails, still set result without recommendation
+        set({ lastInput: input, result: res, isCalculating: false, loading: false })
+      }
     } catch (err: any) {
       set({ error: String(err?.message ?? err), isCalculating: false, loading: false })
     }

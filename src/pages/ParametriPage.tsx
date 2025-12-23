@@ -14,6 +14,7 @@ export default function ParametriPage() {
   // cast as the extended CalculationResult that may contain optional profiles
   const _res = result as unknown as CalculationResultWithProfiles;
   const baselineProfiles = useParametriStore((s) => (s as any).baselineProfiles);
+  const gateFreeze = useParametriStore((s) => (s as any).gateFreezeRecommendation);
   if (import.meta.env.DEV) {
     console.log("profiles", {
       inj: _res?.injectionProfile?.steps?.length ?? 0,
@@ -170,6 +171,25 @@ export default function ParametriPage() {
               </tr>
             </tbody>
           </table>
+
+          {/* Gate Freeze recommendation (minimal, read-only suggestion) */}
+          <div className="mt-4">
+            <h3 className="font-semibold">Gate Freeze</h3>
+            {gateFreeze ? (
+              <div className="text-sm text-gray-800 mt-1">
+                Holding consigliato (Gate Freeze): <strong>{gateFreeze.recommended_hold_s} s</strong>
+                {gateFreeze.confidence != null && (
+                  <> (conf {gateFreeze.confidence})</>
+                )}
+                {gateFreeze.points != null && (
+                  <> — punti {gateFreeze.points}</>
+                )}
+                {gateFreeze.reason && <div className="text-xs text-gray-500">Motivo: {gateFreeze.reason}</div>}
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 mt-1">Nessuna raccomandazione disponibile per questo fingerprint</div>
+            )}
+          </div>
         </div>
       )}
       {/* Baseline profiles banner */}

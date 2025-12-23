@@ -33,8 +33,8 @@
     "test:e2e": "playwright test",
     "dev:profiles": "tsx scripts/dev/runProfiles.ts",
     "dev:profiles:debug": "tsx scripts/dev/debug_profiles.ts",
-    "gate:freeze": "node tools/gate-freeze-study.mjs"
-    ,"gate:freeze:publish": "node tools/gate-freeze-study.mjs --in data/production/*.csv --series \"recipeFingerprint,materialId,pressId\" --out out/gate-freeze && node -e \"const fs=require('fs');fs.mkdirSync('public/gate-freeze',{recursive:true});fs.copyFileSync('out/gate-freeze/recommended_by_recipeFingerprint.json','public/gate-freeze/recommended_by_recipeFingerprint.json');console.log('copied')\""
+    "gate:freeze": "node tools/gate-freeze-study.mjs",
+    "gate:freeze:publish": "node tools/gate-freeze-publish.mjs"
   },
   "main": "electron/main.js",
   "build": {

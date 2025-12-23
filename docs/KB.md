@@ -57,3 +57,23 @@ Minimi consigliati per generare raccomandazioni utili:
 ---
 
 Per dettagli operativi aggiuntivi o per integrare la generazione policy nella pipeline di publish, vedere i tool in `tools/`.
+
+## Publish policy
+
+Per pubblicare la policy unificata (append KB → build → scrivi output):
+
+- Comando standard:
+
+	```bash
+	npm run policy:publish -- --in "data/production/*.csv"
+	```
+
+- Override (per test/debug, usa percorsi isolati):
+
+	```bash
+	npm run policy:publish -- --in "..." --kb "path/cases.json" --out "path/recommended_by_recipeFingerprint.json"
+	```
+
+- Nota: `--kb` e `--out` sono utili per isolare ambienti e non toccare i dati locali.
+
+Lo script logga il numero di casi aggiunti, il numero di fingerprint nella policy e il path dell'output.

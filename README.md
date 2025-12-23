@@ -8,6 +8,17 @@ Requisiti
 Quick start
 ```powershell
 git checkout feature/parametri-anteprima
+````markdown
+# Forma Facile — Parametro (locale)
+
+Progetto per calcolo parametri di stampaggio e preview CAD, preparato per uso e sviluppo locale.
+
+Requisiti
+- Node.js 18+ e npm
+
+Quick start
+```powershell
+git checkout feature/parametri-anteprima
 npm ci
 npm run dev
 ```
@@ -125,3 +136,9 @@ npm run gate:freeze:publish # rigenera e pubblica public/gate-freeze/recommended
 - Se una raccomandazione non esiste per un fingerprint, la UI non applica nulla.
 
 I sample generati sono in `samples/`. File temporanei di debug vengono scritti in `tmp/` (ignorata da git).
+
+## Knowledge Base (KB)
+
+Vedi la documentazione operativa: [docs/KB.md](docs/KB.md) — contiene il workflow per popolare la KB locale (`data/kb/cases.json`) e generare la `public/policy/recommended_by_recipeFingerprint.json`.
+
+````

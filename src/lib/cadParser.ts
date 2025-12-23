@@ -12,6 +12,15 @@ export interface ParsedCADResult extends GeometryData {
   meshes?: Array<{ positions: Float32Array | number[]; indices?: Uint32Array | number[]; normals?: Float32Array | number[] }>;
 }
 
+import type { CadError } from './cadErrors';
+
+// extend parsed result with optional error for fail-soft returns
+export interface ParsedCADResultWithError extends ParsedCADResult {
+  error?: CadError;
+}
+
+import { normalizeCadError, failSoftResult as cadFailSoftResult } from './cadErrors';
+
 function computeFromMeshes(meshes: any[] | undefined) {
   let vol_mm3 = 0;
   let area_mm2 = 0;
@@ -114,16 +123,7 @@ async function callOcctReader(fn: (data: Uint8Array, arg2: any) => any, data: Ui
   }
 }
 
-function failSoftResult(ext: string, message: string): ParsedCADResult {
-  console.warn(message);
-  return {
-    volume_cm3: 0,
-    area_cm2: 0,
-    thickness_mm: null,
-    features: ["occt-unavailable", `ext:${ext}`],
-    meshes: [],
-  };
-}
+
 
 // Worker gating and helpers (module scope so we can export disposeCadWorker)
 const CAD_ENABLED = process.env.RUN_CAD_INTEGRATION === '1' && process.env.NODE_ENV !== 'test';
@@ -197,11 +197,11 @@ async function runCadWithTimeout<T>(ms: number, fn: () => Promise<T>): Promise<T
   }
 }
 
-export async function parseCAD(file: File, onProgress?: (st: { progress?: number; status?: string; message?: string }) => void): Promise<ParsedCADResult> {
+export async function parseCAD(file: File, onProgress?: (st: { progress?: number; status?: string; message?: string }) => void): Promise<ParsedCADResultWithError> {
   const ext = file.name.split('.').pop()?.toLowerCase();
   const arrayBuffer = await file.arrayBuffer();
 
-  if (!ext) throw new Error('Formato CAD non riconosciuto');
+  if (!ext) return cadFailSoftResult(normalizeCadError(new Error('Formato CAD non riconosciuto'), { stage: 'no-ext' }));
 
   const timeoutMs = Number(process.env.CAD_PARSE_TIMEOUT_MS || DEFAULT_PARSE_TIMEOUT_MS);
 
@@ -233,9 +233,8 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
           const g = computeFromMeshes(meshes ?? undefined);
           return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
         } catch (e) {
-          // fallback to main-thread parse with clearer message
-          console.warn('Worker parsing failed or timed out, falling back to main thread:', e);
-          try { if (onProgress) { try { onProgress({ progress: 0, status: 'fallback' }); } catch (err) {} } } catch (_) {}
+          // On worker failure/timeout return normalized fail-soft error
+          return cadFailSoftResult(normalizeCadError(e, { stage: 'worker', ext, fileName: file.name }));
         }
       }
     }
@@ -256,16 +255,16 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
             try { occtInit.scheduleUnloadOcct(); } catch (_) {}
             return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
           } catch (err: any) {
-            return failSoftResult(ext, `OCCT STEP import failed: ${String(err?.message ?? err)}`);
+            return cadFailSoftResult(normalizeCadError(err ?? new Error('OCCT STEP import failed'), { stage: 'step-read', ext, fileName: file.name }));
           }
       }
 
       if (ext === "iges" || ext === "igs") {
         const fn = pickOcctFn(occt, ["ReadIgesFile", "readIgesFile", "ReadIGESFile", "readIGESFile"]);
-        if (!fn) return failSoftResult(ext, "OCCT API mismatch: no IGES reader found on occt instance.");
+        if (!fn) return cadFailSoftResult(normalizeCadError(new Error("OCCT API mismatch: no IGES reader found on occt instance."), { stage: 'iges-api', ext }));
 
         const res = await runCadWithTimeout(timeoutMs, () => callOcctReader(fn, data, file.name || "model.iges"));
-        if (res?.success === false) return failSoftResult(ext, "OCCT IGES import failed (success=false).");
+        if (res?.success === false) return cadFailSoftResult(normalizeCadError(new Error("OCCT IGES import failed (success=false)."), { stage: 'iges-read', ext }));
 
         const meshes = normalizeMeshes(res?.meshes);
         const g = computeFromMeshes(meshes as any);
@@ -276,10 +275,10 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
 
       if (ext === "stl") {
         const fn = pickOcctFn(occt, ["ReadStlFile", "readStlFile", "ReadSTLFile", "readSTLFile"]);
-        if (!fn) return failSoftResult(ext, "OCCT API mismatch: no STL reader found on occt instance.");
+        if (!fn) return cadFailSoftResult(normalizeCadError(new Error("OCCT API mismatch: no STL reader found on occt instance."), { stage: 'stl-api', ext }));
 
         const res = await runCadWithTimeout(timeoutMs, () => callOcctReader(fn, data, file.name || "model.stl"));
-        if (res?.success === false) return failSoftResult(ext, "OCCT STL import failed (success=false).");
+        if (res?.success === false) return cadFailSoftResult(normalizeCadError(new Error("OCCT STL import failed (success=false)."), { stage: 'stl-read', ext }));
 
         const meshes = normalizeMeshes(res?.meshes ?? (res?.mesh ? [res.mesh] : []));
         const g = computeFromMeshes(meshes as any);
@@ -288,10 +287,10 @@ export async function parseCAD(file: File, onProgress?: (st: { progress?: number
         return { volume_cm3: g.volume_cm3, area_cm2: g.area_cm2, thickness_mm: null, features: [], meshes } as ParsedCADResult;
       }
     } catch (e: any) {
-      return failSoftResult(ext ?? "unknown", `occt-import-js parsing failed: ${e?.message ?? e}`);
+      return cadFailSoftResult(normalizeCadError(e, { stage: 'occt-init', ext }));
     }
 
-    throw new Error('Formato CAD non supportato');
+    return cadFailSoftResult(normalizeCadError(new Error('Formato CAD non supportato'), { stage: 'unsupported', ext }));
   } finally {
     try { disposeCadWorker(); } catch (_) {}
   }

@@ -32,7 +32,8 @@
     "e2e:simulate": "node scripts/e2e-simulate-upload.mjs",
     "test:e2e": "playwright test",
     "dev:profiles": "tsx scripts/dev/runProfiles.ts",
-    "dev:profiles:debug": "tsx scripts/dev/debug_profiles.ts"
+    "dev:profiles:debug": "tsx scripts/dev/debug_profiles.ts",
+    "gate:freeze": "node tools/gate-freeze-study.mjs"
   },
   "main": "electron/main.js",
   "build": {

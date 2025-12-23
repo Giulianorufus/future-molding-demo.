@@ -34,7 +34,8 @@
     "dev:profiles": "tsx scripts/dev/runProfiles.ts",
     "dev:profiles:debug": "tsx scripts/dev/debug_profiles.ts",
     "gate:freeze": "node tools/gate-freeze-study.mjs",
-    "gate:freeze:publish": "node tools/gate-freeze-publish.mjs"
+    "gate:freeze:publish": "node tools/gate-freeze-publish.mjs",
+    "policy:publish": "node tools/policy-publish.mjs"
   },
   "main": "electron/main.js",
   "build": {

@@ -34,6 +34,8 @@ const debug = hasFlag("--debug");
 const holdColOverride = getArg("--hold-col");
 const weightColOverride = getArg("--weight-col");
 const cycleColOverride = getArg("--cycle-col");
+const fingerprintCol = getArg("--fingerprint-col") || "recipeFingerprint";
+const emitByFingerprint = (getArg("--emit-by-fingerprint") ?? "true") !== "false";
 
 if (!inArg) {
   console.error(
@@ -193,6 +195,7 @@ function mean(nums) {
   if (!a.length) return null;
   return a.reduce((p, c) => p + c, 0) / a.length;
 }
+function clamp(v, a = 0, b = 1) { return Math.max(a, Math.min(b, v)); }
 function stdev(nums) {
   const a = nums.filter((x) => Number.isFinite(x));
   if (a.length < 2) return null;
@@ -495,12 +498,23 @@ for (const fp of files) {
 </html>`;
     writeText(plotPath, plotHtml);
 
+    // try to extract recipe fingerprint from rows (if available)
+    const fpVal = (sRows.find((r) => r[fingerprintCol]) || {})[fingerprintCol] ?? null;
+
+    // compute a simple confidence score
+    const pts = points.length;
+    const baseScore = clamp(pts / 20, 0, 1);
+    const reasonBonus = String(rec.reason || "").startsWith("entro_") ? 1 : 0.5;
+    const confidence = clamp(0.6 * baseScore + 0.4 * reasonBonus, 0, 1);
+
     allSummaries.push({
       file: base,
       series: seriesKey,
       recommended_hold_s: recommended,
       reason: rec.reason,
-      points: points.length,
+      points: pts,
+      confidence,
+      recipeFingerprint: fpVal,
       has_weight: hasWeight,
       aggregate_csv: path.relative(process.cwd(), aggPath).replaceAll("\\", "/"),
       plot_html: path.relative(process.cwd(), plotPath).replaceAll("\\", "/"),
@@ -520,6 +534,44 @@ const summaryCsv =
   allSummaries.map((s) => csvLine(s, summaryHeaders)).join("\n") +
   "\n";
 writeText(summaryCsvPath, summaryCsv);
+
+// emit by fingerprint: aggregate best candidate per recipeFingerprint
+if (emitByFingerprint) {
+  const byFingerprint = new Map();
+  for (const s of allSummaries) {
+    if (s.recommended_hold_s == null) continue;
+    const fp = s.recipeFingerprint ?? null;
+    if (!fp) continue;
+    const existing = byFingerprint.get(fp);
+    if (!existing) {
+      byFingerprint.set(fp, s);
+      continue;
+    }
+    // prefer higher confidence, tie-breaker higher points
+    if ((s.confidence ?? 0) > (existing.confidence ?? 0)) {
+      byFingerprint.set(fp, s);
+    } else if ((s.confidence ?? 0) === (existing.confidence ?? 0) && (s.points ?? 0) > (existing.points ?? 0)) {
+      byFingerprint.set(fp, s);
+    }
+  }
+
+  const outObj = { generatedAt: new Date().toISOString(), fingerprints: {} };
+  for (const [fp, s] of byFingerprint.entries()) {
+    // try to parse materialId and pressId from series (if present)
+    const kvs = String(s.series || "").split("|").map((x) => x.split("=")).filter((a) => a.length === 2);
+    const obj = Object.fromEntries(kvs.map(([k, v]) => [k, v]));
+    outObj.fingerprints[fp] = {
+      recommended_hold_s: s.recommended_hold_s,
+      confidence: Number((s.confidence ?? 0).toFixed(3)),
+      valid_for: { recipeFingerprint: fp, materialId: obj.materialId ?? null, pressId: obj.pressId ?? null },
+      points: s.points ?? 0,
+      reason: s.reason ?? null,
+    };
+  }
+
+  const byFpPath = path.join(outDir, "recommended_by_recipeFingerprint.json");
+  writeText(byFpPath, JSON.stringify(outObj, null, 2));
+}
 
 console.log(`OK. Output: ${outDir}`);
 console.log(`- ${path.relative(process.cwd(), summaryJsonPath).replaceAll("\\", "/")}`);

@@ -50,7 +50,7 @@ function rowToCase(row) {
 async function main() {
   const argv = process.argv.slice(2)
   if (argv.length === 0) {
-    console.error('Usage: append-cases-from-csv.mjs <csv-file> [--append-only]')
+    console.error('Usage: append-cases-from-csv.mjs <csv-file> [--append-only] [--kb <kbFile>]')
     process.exit(2)
   }
   const inFile = argv[0]
@@ -63,15 +63,15 @@ async function main() {
   const txt = fs.readFileSync(inPath, 'utf8')
   const rows = parseCsv(txt)
   const cases = rows.map(rowToCase).filter(r => r.recipeFingerprint)
-
-  const kbDir = path.resolve(cwd, 'data', 'kb')
-  try { fs.mkdirSync(kbDir, { recursive: true }) } catch (_) {}
-  const kbFile = path.join(kbDir, 'cases.json')
-  let existing = []
-  try { existing = JSON.parse(fs.readFileSync(kbFile, 'utf8') || '[]') } catch (_) { existing = [] }
+  // parse optional --kb flag
+  let kbFile = path.join(path.resolve(cwd, 'data', 'kb'), 'cases.json')
+  const kbFlagIndex = argv.indexOf('--kb')
+  if (kbFlagIndex !== -1 && argv[kbFlagIndex+1]) {
+    kbFile = path.isAbsolute(argv[kbFlagIndex+1]) ? argv[kbFlagIndex+1] : path.resolve(cwd, argv[kbFlagIndex+1])
+  }
 
   for (const c of cases) {
-    appendCaseFromImport(c)
+    appendCaseFromImport(c, kbFile)
   }
   console.log('Appended', cases.length, 'cases to', kbFile)
 }

@@ -1,4 +1,16 @@
 {
-  "generatedAt": "2025-12-23T00:00:00.000Z",
-  "fingerprints": {}
+  "generatedAt": "2025-12-23T09:08:34.062Z",
+  "fingerprints": {
+    "rfpA": {
+      "recommended_hold_s": 2.1,
+      "confidence": 1,
+      "valid_for": {
+        "recipeFingerprint": "rfpA",
+        "materialId": "PP",
+        "pressId": "AR100"
+      },
+      "points": 20,
+      "reason": "entro_0.20%_dal_max"
+    }
+  }
 }

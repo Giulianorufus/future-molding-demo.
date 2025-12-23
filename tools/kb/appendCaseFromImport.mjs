@@ -7,9 +7,11 @@ function ensureKbDir(cwd) {
   return path.join(kbDir, 'cases.json')
 }
 
-export function appendCaseFromImport(caseObj) {
+export function appendCaseFromImport(caseObj, kbFilePath) {
   const cwd = process.cwd()
-  const kbFile = ensureKbDir(cwd)
+  const kbFile = kbFilePath ? kbFilePath : ensureKbDir(cwd)
+  const kbDir = path.dirname(kbFile)
+  try { fs.mkdirSync(kbDir, { recursive: true }) } catch (_) {}
   let existing = []
   try { existing = JSON.parse(fs.readFileSync(kbFile, 'utf8') || '[]') } catch (_) { existing = [] }
   existing.push(caseObj)

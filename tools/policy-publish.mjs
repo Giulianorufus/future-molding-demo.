@@ -15,16 +15,17 @@ function log(...args) {
 
 const args = process.argv.slice(2);
 let inPattern;
+let kbPathArg;
+let outPathArg;
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--in' && args[i+1]) {
-    inPattern = args[i+1];
-    i++;
-  }
+  if (args[i] === '--in' && args[i+1]) { inPattern = args[i+1]; i++; }
+  if (args[i] === '--kb' && args[i+1]) { kbPathArg = args[i+1]; i++; }
+  if (args[i] === '--out' && args[i+1]) { outPathArg = args[i+1]; i++; }
 }
 
 const repoRoot = process.cwd();
-const kbPath = path.join(repoRoot, 'data', 'kb', 'cases.json');
-const outPolicyPath = path.join(repoRoot, 'public', 'policy', 'recommended_by_recipeFingerprint.json');
+const kbPath = kbPathArg ? (path.isAbsolute(kbPathArg) ? kbPathArg : path.join(repoRoot, kbPathArg)) : path.join(repoRoot, 'data', 'kb', 'cases.json');
+const outPolicyPath = outPathArg ? (path.isAbsolute(outPathArg) ? outPathArg : path.join(repoRoot, outPathArg)) : path.join(repoRoot, 'public', 'policy', 'recommended_by_recipeFingerprint.json');
 
 // Read initial KB count
 let beforeCount = 0;
@@ -46,7 +47,9 @@ if (inPattern) {
   log(`Found ${matches.length} file(s) for append.`);
   for (const f of matches) {
     log('Appending from', f);
-    const res = spawnSync(process.execPath, ['tools/kb/append-cases-from-csv.mjs', f], { stdio: 'inherit' });
+    const args = ['tools/kb/append-cases-from-csv.mjs', f]
+    if (kbPath) args.push('--kb', kbPath)
+    const res = spawnSync(process.execPath, args, { stdio: 'inherit' });
     if (res.error) {
       exitErr(`append-cases-from-csv failed for ${f}: ${res.error.message}`);
     }
@@ -58,7 +61,10 @@ if (inPattern) {
 
 // Build policy from KB
 log('Building policy from KB...');
-const buildRes = spawnSync(process.execPath, ['tools/policy-build-from-kb.mjs'], { stdio: 'inherit' });
+const buildArgs = ['tools/policy-build-from-kb.mjs']
+if (kbPath) buildArgs.push('--kb', kbPath)
+if (outPolicyPath) buildArgs.push('--out', outPolicyPath)
+const buildRes = spawnSync(process.execPath, buildArgs, { stdio: 'inherit' });
 if (buildRes.error) {
   exitErr(`policy-build-from-kb failed: ${buildRes.error.message}`);
 }

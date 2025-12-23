@@ -50,7 +50,15 @@ function buildFromCases(cases) {
 
 async function main() {
   const cwd = process.cwd()
-  const kbFile = path.join(cwd, 'data', 'kb', 'cases.json')
+  const argv = process.argv.slice(2)
+  // optional flags: --kb <kbFile> --out <outFile>
+  let kbFile = path.join(cwd, 'data', 'kb', 'cases.json')
+  let outFile = path.join(cwd, 'public','policy','recommended_by_recipeFingerprint.json')
+  const kbIndex = argv.indexOf('--kb')
+  if (kbIndex !== -1 && argv[kbIndex+1]) kbFile = path.isAbsolute(argv[kbIndex+1]) ? argv[kbIndex+1] : path.resolve(cwd, argv[kbIndex+1])
+  const outIndex = argv.indexOf('--out')
+  if (outIndex !== -1 && argv[outIndex+1]) outFile = path.isAbsolute(argv[outIndex+1]) ? argv[outIndex+1] : path.resolve(cwd, argv[outIndex+1])
+
   if (!fs.existsSync(kbFile)) {
     console.error('KB cases not found:', kbFile)
     process.exit(2)
@@ -59,9 +67,8 @@ async function main() {
   const cases = JSON.parse(raw || '[]')
   const policy = buildFromCases(cases)
 
-  const outDir = path.join(cwd, 'public','policy')
+  const outDir = path.dirname(outFile)
   try { fs.mkdirSync(outDir, { recursive: true }) } catch (_) {}
-  const outFile = path.join(outDir, 'recommended_by_recipeFingerprint.json')
   fs.writeFileSync(outFile, JSON.stringify(policy, null, 2), 'utf8')
   console.log('Wrote policy to', outFile)
 }

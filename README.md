@@ -113,6 +113,7 @@ Comandi utili:
 npm test
 npm run smoke:pdf      # esegue lo smoke rapido (usa tsx loader)
 npm run samples:recipe # genera samples/recipe.sample.*
+npm run gate:freeze:publish # rigenera e pubblica public/gate-freeze/recommended_by_recipeFingerprint.json (vedi gate-freeze-study.md)
 ```
 
 I sample generati sono in `samples/`. File temporanei di debug vengono scritti in `tmp/` (ignorata da git).

@@ -26,13 +26,8 @@ describe("analyzeCADFile cache reuse", () => {
     });
 
     const buf = new TextEncoder().encode("same-content").buffer;
-    let file: any;
-    try {
-      // File may not exist in Node/Jest environment
-      file = new File([buf], "part.step", { type: "application/octet-stream" });
-    } catch (_) {
-      file = { name: "part.step", size: buf.byteLength, arrayBuffer: async () => buf };
-    }
+    // Use a simple file-like object to avoid environment-specific File constructor
+    const file: any = { name: "part.step", size: buf.byteLength, arrayBuffer: async () => buf };
 
     const r1 = await analyzeCADFile(file);
     const r2 = await analyzeCADFile(file);

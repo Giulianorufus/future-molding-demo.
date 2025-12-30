@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2025-12-30T10:29:15.519Z",
+  "recommendations": [
+    {
+      "groupKey": "fp-ABS",
+      "recommendedHoldingTime_s": 3,
+      "plateauWeight_g": 9.987,
+      "eps_g": 0.02,
+      "confidence": 0.5339999999999996,
+      "method": "weight_plateau",
+      "nPoints": 5,
+      "usedKey": "weight_g"
+    },
+    {
+      "groupKey": "fp-PP",
+      "recommendedHoldingTime_s": 3,
+      "plateauWeight_g": 12.305,
+      "eps_g": 0.02,
+      "confidence": 0.475,
+      "method": "weight_plateau",
+      "nPoints": 4,
+      "usedKey": "weight_g"
+    }
+  ]
+}

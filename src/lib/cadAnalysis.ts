@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { parseCAD } from './cadParser';
 import { getCadAnalysisCached, setCadAnalysisCached } from './cadAnalysisCache';
 import { cadFallbackResult } from './cadFallback';
-import { recordCacheHit, recordCacheMiss, recordTimeout, recordParse } from './cadTelemetry';
+import { recordCacheHit, recordCacheMiss, recordTimeout, recordParse, recordParseEvent } from './cadTelemetry';
+import { normalizeCadError } from './cadErrors';
 // Parse timeout configuration
 const DEFAULT_PARSE_TIMEOUT_MS = 15000;
 
@@ -51,7 +52,20 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
     // Usa il parser avanzato per tutti i formati supportati
     // compute hash + cache key from file content (ArrayBuffer) before parsing
     const buf = await file.arrayBuffer();
-    const digest = await crypto.subtle.digest("SHA-256", buf);
+    // Support environments without WebCrypto.subtle (Node < 18 or mocked envs)
+    let digest: ArrayBuffer;
+    if (typeof (globalThis as any).crypto?.subtle?.digest === 'function') {
+      digest = await (globalThis as any).crypto.subtle.digest("SHA-256", buf);
+    } else {
+      // Fallback using Node crypto
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const nodeCrypto = require('crypto');
+      const hash = nodeCrypto.createHash('sha256');
+      const b = Buffer.from(buf as any);
+      hash.update(b);
+      const d = hash.digest();
+      digest = d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength);
+    }
     const hashHex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
     const cacheKey = `cad:${ext}:${hashHex}`;
 
@@ -73,6 +87,16 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
       try {
         recordParseMetric({ id: Math.random().toString(36).slice(2,9), fileName: file.name, fileSizeBytes: file.size, durationMs: Math.round(t1 - t0), timestamp: Date.now(), success: true, fallbackUsed });
       } catch (e) {}
+
+      // If parser returned a fail-soft result with an attached error, record the event (no stacks)
+      try {
+        const maybeErr = (geom as any)?.error;
+        if (maybeErr && maybeErr.code) {
+          try { recordParseEvent({ durationMs: Math.round(t1 - t0), success: false, errorCode: maybeErr.code, recoverable: !!maybeErr.recoverable, stage: maybeErr.context?.stage }); } catch (_) {}
+        } else {
+          try { recordParseEvent({ durationMs: Math.round(t1 - t0), success: true }); } catch (_) {}
+        }
+      } catch (_) {}
 
       const result: AnalysisResult = {
         volume: geom.volume_cm3,
@@ -98,6 +122,12 @@ export async function analyzeCADFile(file: File, onProgress?: (st: { progress?: 
       // Se il parser fallisce, log e fallback unificato: non rilanciamo mai
       try { if (String(err?.message ?? err).toLowerCase().includes('timeout')) { recordTimeout(); } } catch(e) {}
       log.warn('parseCAD failed:', err);
+      // Normalize to canonical code and store minimal telemetry (code + optional stage)
+      try {
+        const stageCtx = err?.context || err?.error?.context || undefined;
+        const norm = normalizeCadError(err, stageCtx);
+        try { recordParseEvent({ durationMs: 0, success: false, errorCode: norm.code, recoverable: !!norm.recoverable, stage: norm.context?.stage }); } catch (_) {}
+      } catch (_) {}
       try {
         if (onProgress) {
           try { onProgress({ progress: 0, status: 'fallback', message: String(err?.message ?? err) }); } catch (e) {}

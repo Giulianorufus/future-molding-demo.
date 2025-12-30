@@ -23,6 +23,9 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [cadErrorCode, setCadErrorCode] = useState<string | null>(null);
+  const [cadErrorMessage, setCadErrorMessage] = useState<string | null>(null);
+  const [cadErrorHint, setCadErrorHint] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [progressStatus, setProgressStatus] = useState<string>('');
   const [errorModalOpen, setErrorModalOpen] = useState(false);
@@ -159,6 +162,10 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
             }
       }
       
+      // clear any previous CAD error state
+      setCadErrorCode(null);
+      setCadErrorMessage(null);
+      setCadErrorHint(null);
       setAnalysisResult(analysis);
       onAnalysisComplete(analysis);
       
@@ -170,6 +177,15 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
     } catch (error: any) {
       log.error('CAD analysis error:', error);
       const um = mapError(error);
+      // extract canonical code/message/hint when present (fail-soft or normalized error)
+      try {
+        const code = error?.error?.code || error?.code || null;
+        const message = error?.error?.message || error?.message || um.description || null;
+        const hint = error?.error?.hint || null;
+        setCadErrorCode(code);
+        setCadErrorMessage(message);
+        setCadErrorHint(hint);
+      } catch (_) {}
       toast({
         title: um.title,
         description: um.description,
@@ -290,9 +306,15 @@ export function CADUpload({ onAnalysisComplete, className }: CADUploadProps) {
                   ) : (
                     <>
                       <AlertCircle className="h-4 w-4 text-destructive" />
-                      <span className="text-xs text-destructive">
-                        Errore nell'analisi
-                      </span>
+                      {cadErrorCode ? (
+                        <div className="flex flex-col">
+                          <span data-testid="cad-error-code" className="text-xs text-destructive">{cadErrorCode}</span>
+                          {cadErrorMessage ? <div className="text-xs text-destructive">{cadErrorMessage}</div> : null}
+                          {cadErrorHint ? <div className="text-[10px] text-muted-foreground">{cadErrorHint}</div> : null}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-destructive">Errore nell'analisi</span>
+                      )}
                     </>
                   )}
                 </div>

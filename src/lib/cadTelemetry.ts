@@ -14,6 +14,17 @@ const telemetry: TelemetrySnapshot = {
   totalParseMs: 0,
 };
 
+type ParseEvent = {
+  timestamp?: number;
+  durationMs?: number;
+  success: boolean;
+  errorCode?: string;
+  recoverable?: boolean;
+  stage?: string | undefined;
+};
+
+const parseEvents: ParseEvent[] = [];
+
 export function recordCacheHit() {
   telemetry.cacheHits += 1;
 }
@@ -24,6 +35,14 @@ export function recordCacheMiss() {
 
 export function recordTimeout() {
   telemetry.timeoutCount += 1;
+}
+
+export function recordParseEvent(ev: ParseEvent) {
+  // keep a short rolling buffer of recent parse events for debug endpoints
+  try {
+    parseEvents.push({ ...ev, timestamp: Date.now() });
+    if (parseEvents.length > 100) parseEvents.shift();
+  } catch (e) {}
 }
 
 export function recordParse(durationMs: number) {
@@ -47,6 +66,10 @@ export function averageParseMs(): number {
   return telemetry.parseCount === 0 ? 0 : telemetry.totalParseMs / telemetry.parseCount;
 }
 
+export function getParseEvents(): ParseEvent[] {
+  return parseEvents.slice();
+}
+
 export default {
   recordCacheHit,
   recordCacheMiss,
@@ -56,3 +79,4 @@ export default {
   clearTelemetry,
   averageParseMs,
 };
+

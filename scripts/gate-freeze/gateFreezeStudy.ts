@@ -1,3 +1,15 @@
+/**
+ * Gate freeze CLI
+ *
+ * Usage examples:
+ *  CSV (group by fingerprint):
+ *    npm run dev:gate-freeze -- --in "file.csv" --groupBy fingerprint --outDir "out"
+ *
+ *  JSON (cases export, group by partName):
+ *    npm run dev:gate-freeze -- --in "cases.json" --groupBy partName --outDir "out"
+ *
+ * Available groupBy values: auto|fingerprint|partName|materialId|pressId (default: auto)
+ */
 import fs from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
@@ -14,18 +26,24 @@ function pickNumber(row: AnyRow, keys: string[]): number | undefined {
   return undefined;
 }
 
-function normalizePoints(rows: AnyRow[]): { groupKey: string; points: GateFreezePoint[] }[] {
+function getGroupKey(r: AnyRow, groupBy: string): string {
+  const auto =
+    r.recipeFingerprint || r.fingerprint || r.partName || r.materialId || r.pressId || r.group || "default";
+
+  if (groupBy === "auto") return auto;
+  if (groupBy === "fingerprint") return r.recipeFingerprint || r.fingerprint || r.group || "default";
+  if (groupBy === "partName") return r.partName || "default";
+  if (groupBy === "materialId") return r.materialId || "default";
+  if (groupBy === "pressId") return r.pressId || "default";
+  return auto;
+}
+
+function normalizePoints(rows: AnyRow[], groupBy: string): { groupKey: string; points: GateFreezePoint[] }[] {
   // groupKey: prova fingerprint/partName/materialId, altrimenti "default"
   const groups = new Map<string, GateFreezePoint[]>();
 
   for (const r of rows) {
-    const groupKey =
-      r.recipeFingerprint ||
-      r.fingerprint ||
-      r.partName ||
-      r.materialId ||
-      r.group ||
-      "default";
+    const groupKey = getGroupKey(r, groupBy);
 
     const holdingTime_s = pickNumber(r, ["holdingTime_s", "holdingTime", "hold_s", "packHold_s"]);
     if (!holdingTime_s) continue;
@@ -91,11 +109,18 @@ async function main() {
   const args = process.argv.slice(2);
   const inIdx = args.indexOf("--in");
   const outIdx = args.indexOf("--outDir");
+  const gbIdx = args.indexOf("--groupBy");
   const input = inIdx >= 0 ? args[inIdx + 1] : "";
   const outDir = outIdx >= 0 ? args[outIdx + 1] : "scripts/gate-freeze/out";
+  const groupBy = (gbIdx >= 0 ? args[gbIdx + 1] : "auto") as
+    | "auto"
+    | "fingerprint"
+    | "partName"
+    | "materialId"
+    | "pressId";
 
   if (!input) {
-    console.error('Usage: npm run dev:gate-freeze -- --in "<file1,file2>" --outDir "scripts/gate-freeze/out"');
+    console.error('Usage: npm run dev:gate-freeze -- --in "<file1,file2>" --outDir "scripts/gate-freeze/out" [--groupBy auto|fingerprint|partName|materialId|pressId]');
     process.exit(1);
   }
 
@@ -109,7 +134,7 @@ async function main() {
     else throw new Error(`Unsupported input: ${f}`);
   }
 
-  const groups = normalizePoints(rows);
+  const groups = normalizePoints(rows, groupBy);
 
   const recs = groups.map(({ groupKey, points }) => {
     const r = computeGateFreeze(points);

@@ -1,6 +1,8 @@
 export type CalculationInput = {
   volumeCm3: number
   shotVolumeCm3?: number
+  projectedAreaCm2?: number
+  cavityCount?: number
   press?: {
     id: string
     tonnellaggio: number
@@ -34,11 +36,14 @@ export type CalcContext = {
   cadAnalysisMeta?: CadAnalysisMeta | null
 }
 
-export function calcolaTonnellaggio(volumeCm3: number, materialDensity?: number): number {
-  // Simplified estimation: volume * density -> grams. Convert to tonnellaggio as arbitrary factor.
+export function calcolaTonnellaggio(volumeCm3: number, materialDensity?: number, projectedAreaCm2?: number, materialId?: string): number {
+  if (typeof projectedAreaCm2 === 'number' && projectedAreaCm2 > 0) {
+    const id = String(materialId ?? '').toUpperCase()
+    const pressureGcm2 = id.includes('PA') ? 500 : id.includes('PC') ? 430 : id.includes('ABS') ? 380 : 330
+    return Number(((projectedAreaCm2 * pressureGcm2) / 1000).toFixed(1))
+  }
   const grams = volumeCm3 * (materialDensity ?? 1)
-  // assume force ~ grams * 0.1 -> convert to tons
-  return Math.max(1, Math.ceil((grams * 0.1) / 1000))
+  return Math.max(1, Number(((grams * 0.1) / 1000).toFixed(1)))
 }
 
 export function calcolaPressione(volumeCm3: number, shotVolumeCm3?: number): number {
@@ -68,8 +73,8 @@ export function calcolaRaffreddamento(materialTemp?: number): { suggestedC: numb
 }
 
 export function calcolaParametri(input: CalculationInput, context?: CalcContext): CalculationResult {
-  const { volumeCm3, press, material, shotVolumeCm3 } = input
-  const ton = calcolaTonnellaggio(volumeCm3, material?.densityGPerCm3)
+  const { volumeCm3, press, material, shotVolumeCm3, projectedAreaCm2 } = input
+  const ton = calcolaTonnellaggio(volumeCm3, material?.densityGPerCm3, projectedAreaCm2, material?.id)
   const pressure = calcolaPressione(volumeCm3, shotVolumeCm3)
   const screw = press?.screwDiameterMm ?? press?.screwDiameters?.[0] ?? 20
   const velocity = calcolaVelocità(press?.maxSpeedMmPerS)

@@ -1,11 +1,11 @@
 import { getUrlForDrawingStore, isImageFile } from '../useDrawingUpload';
 
 describe('useDrawingUpload URL mapping', () => {
-  it('should treat STEP files as a model and set viewerUrl only', () => {
+  it('should not send a raw STEP file directly to the GLTF viewer', () => {
     const file = new File(['dummy'], 'part.step', { type: 'application/step' });
     const url = 'blob://model-step';
     expect(isImageFile(file)).toBe(false);
-    expect(getUrlForDrawingStore(file, url)).toEqual({ viewerUrl: url, previewUrl: null });
+    expect(getUrlForDrawingStore(file, url)).toEqual({ viewerUrl: null, previewUrl: null });
   });
 
   it('should treat GLB files as a model and set viewerUrl only', () => {

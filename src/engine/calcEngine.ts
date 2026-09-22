@@ -671,7 +671,7 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
     contropressione: internal.backPressureBar,
     tempoDosatura: internal.plastificationTimeSec,
 
-    tonnellaggio: internal.tonnellaggio ?? internal.requiredTonnage_t ?? 0,
+    // clampForceTon is the authoritative unified-engine clamp result; legacy\n    // tonnellaggio helpers may still expose an older placeholder value.\n    tonnellaggio: internal.clampForceTon ?? internal.requiredTonnage_t ?? internal.tonnellaggio ?? 0,
     tonnellaggioPressa: machine.tonnellaggio_kN,
 
     temperature: tempOut,

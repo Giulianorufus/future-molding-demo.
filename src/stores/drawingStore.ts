@@ -35,11 +35,19 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   conversionMessage: undefined,
   conversionId: null,
   setResult(payload) {
-    set((s) => ({
-      ...s,
-      ...payload,
-      viewerUrl: payload.viewerUrl ?? payload.glbUrl ?? s.viewerUrl ?? null,
-    }))
+    set((s) => {
+      const hasViewerUrl = Object.prototype.hasOwnProperty.call(payload, 'viewerUrl')
+      const hasGlbUrl = Object.prototype.hasOwnProperty.call(payload, 'glbUrl')
+      return {
+        ...s,
+        ...payload,
+        viewerUrl: hasViewerUrl
+          ? (payload.viewerUrl ?? null)
+          : hasGlbUrl
+            ? (payload.glbUrl ?? null)
+            : s.viewerUrl,
+      }
+    })
   },
   setGlbUrl: (url: string | null) => set((s) => ({ ...s, glbUrl: url, viewerUrl: url ?? s.viewerUrl })),
   setModelUrl: (url: string | null) => set((s) => ({ ...s, viewerUrl: url, glbUrl: url })),

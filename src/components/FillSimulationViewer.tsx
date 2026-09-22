@@ -39,6 +39,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
 
     let controls: any
     let frame = 0
+    let disposed = false
     let model: THREE.Object3D | null = null
     let fillPlane: THREE.Plane | null = null
     let minX = -40, maxX = 40
@@ -94,7 +95,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
         if (original) o.geometry = original
         o.material = new THREE.MeshStandardMaterial({
           color: 0x1597e5, roughness: 0.6, metalness: 0.02,
-          side: THREE.DoubleSide, clippingPlanes: [fillPlane!],
+          side: THREE.DoubleSide,
         })
       })
     }
@@ -113,6 +114,22 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       if (gp) gateMarker.position.set(gp.x, gp.y, gp.z)
     }
     placeMarkerFromStore()
+    const unsubscribeGate = useDrawingStore.subscribe((state, previousState) => {
+      if (state.gatePoint === previousState.gatePoint) return
+
+      const gp = state.gatePoint
+
+      if (!gp) {
+        gateMarker.visible = false
+        restoreAxisFill()
+        return
+      }
+
+      gateMarker.position.set(gp.x, gp.y, gp.z)
+      gateMarker.visible = true
+
+      if (model) rebuildGateFill()
+    })
 
     const onPointerDown = (event: PointerEvent) => {
       if (!selectingGateRef.current || !model) return
@@ -128,9 +145,6 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
         gatePoint: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
         gateNormal: { x: normal.x, y: normal.y, z: normal.z },
       })
-      gateMarker.position.copy(hit.point)
-      gateMarker.visible = true
-      rebuildGateFill()
       selectingGateRef.current = false
       setSelectingGate(false)
     }
@@ -139,37 +153,48 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     Promise.all([
       import('three/examples/jsm/loaders/GLTFLoader'),
       import('three/examples/jsm/controls/OrbitControls'),
-    ]).then(([lm, cm]) => {
+    ]).then(async ([lm, cm]) => {
       controls = new cm.OrbitControls(camera, renderer.domElement)
       controls.enableDamping = true
-      new lm.GLTFLoader().load(viewerUrl, gltf => {
-        model = gltf.scene
-        const box = new THREE.Box3().setFromObject(model)
-        const size = box.getSize(new THREE.Vector3())
-        const center = box.getCenter(new THREE.Vector3())
-        model.position.sub(center)
-        const scale = 80 / (Math.max(size.x, size.y, size.z) || 1)
-        model.scale.setScalar(scale)
-        scene.add(model)
-        const fitted = new THREE.Box3().setFromObject(model)
-        minX = fitted.min.x; maxX = fitted.max.x
-        fillPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), minX)
-        model.traverse((o: any) => {
-          if (!o.isMesh) return
-          originalGeometries.set(o, o.geometry)
-          o.frustumCulled = false
-          o.material = new THREE.MeshStandardMaterial({
-            color: 0x1597e5, roughness: 0.6, metalness: 0.02,
-            side: THREE.DoubleSide, clippingPlanes: [fillPlane!],
+      try {
+        const response = await fetch(viewerUrl)
+        if (!response.ok) throw new Error(`Caricamento GLB fallito: HTTP ${response.status}`)
+        const arrayBuffer = await response.arrayBuffer()
+        if (disposed) return
+        new lm.GLTFLoader().parse(arrayBuffer, viewerUrl, gltf => {
+          if (disposed) return
+          model = gltf.scene
+          const box = new THREE.Box3().setFromObject(model)
+          const size = box.getSize(new THREE.Vector3())
+          const center = box.getCenter(new THREE.Vector3())
+          model.position.sub(center)
+          const scale = 80 / (Math.max(size.x, size.y, size.z) || 1)
+          model.scale.setScalar(scale)
+          scene.add(model)
+          const fitted = new THREE.Box3().setFromObject(model)
+          minX = fitted.min.x; maxX = fitted.max.x
+          fillPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), minX)
+          model.traverse((o: any) => {
+            if (!o.isMesh) return
+            originalGeometries.set(o, o.geometry)
+            o.frustumCulled = false
+            o.material = new THREE.MeshStandardMaterial({
+              color: 0x1597e5, roughness: 0.6, metalness: 0.02,
+              side: THREE.DoubleSide,
+            })
           })
+          renderer.localClippingEnabled = true
+          if (useDrawingStore.getState().gatePoint) rebuildGateFill()
+          const d = 120
+          camera.position.set(d * .75, d * .55, d * 1.15)
+          camera.lookAt(0, 0, 0)
+          controls.target.set(0, 0, 0)
+        }, error => {
+          if (!disposed) console.error('Parsing GLB fallito:', error)
         })
-        renderer.localClippingEnabled = true
-        if (useDrawingStore.getState().gatePoint) rebuildGateFill()
-        const d = 120
-        camera.position.set(d * .75, d * .55, d * 1.15)
-        camera.lookAt(0, 0, 0)
-        controls.target.set(0, 0, 0)
-      })
+      } catch (error) {
+        if (!disposed) console.error('Caricamento GLB fallito:', error)
+      }
     })
 
     const loop = (now: number) => {
@@ -187,7 +212,10 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       renderer.render(scene, camera)
     }
     frame = requestAnimationFrame(loop)
-    return () => { cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = '' }
+    return () => {
+      disposed = true
+      unsubscribeGate(); cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = ''
+    }
   }, [viewerUrl, durationMs, setDrawingResult])
 
   useEffect(() => {

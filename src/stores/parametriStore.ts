@@ -376,7 +376,7 @@ if (typeof window !== 'undefined') {
       const baseInput: CalculationInput = {
         volumeCm3: singlePartVolume,
         shotVolumeCm3: singlePartVolume * cavityCount + runnerVolume,
-        projectedAreaCm2: singlePartArea > 0 ? singlePartArea * cavityCount + runnerArea : undefined,
+        // Unified engine owns cavity/runner scaling; pass single-part CAD area here.\n        projectedAreaCm2: singlePartArea > 0 ? singlePartArea : undefined,
         cavityCount,
         press: pressEntry
           ? {

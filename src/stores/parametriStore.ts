@@ -369,7 +369,6 @@ if (typeof window !== 'undefined') {
       const cavityCount = Math.max(1, Math.floor(Number((d as any)?.cavityCount) || 1))
       const feedSystem = (d as any)?.feedSystem ?? 'unknown'
       const runnerVolume = feedSystem === 'cold' ? Math.max(0, Number((d as any)?.runnerVolumeCm3) || 0) : 0
-      const runnerArea = feedSystem === 'cold' ? Math.max(0, Number((d as any)?.runnerProjectedAreaCm2) || 0) : 0
       const singlePartVolume = d?.volumeCm3 ?? 0
       const singlePartArea = Number((d as any)?.surfaceCm2) || 0
 

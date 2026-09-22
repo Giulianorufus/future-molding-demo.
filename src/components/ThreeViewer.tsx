@@ -32,8 +32,10 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selec
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
     camera.position.set(0, 0, 150);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
+    renderer.setClearColor(0xf5f5f5, 1);
     containerRef.current.innerHTML = "";
     containerRef.current.appendChild(renderer.domElement);
 
@@ -79,6 +81,22 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selec
               return;
             }
 
+            // CAD exports can contain materials that are technically valid GLTF
+            // but render black/invisible in the simple viewer. Use a neutral,
+            // double-sided material so the actual geometry is always visible.
+            root.traverse((obj: any) => {
+              if (obj?.isMesh) {
+                obj.visible = true;
+                obj.frustumCulled = false;
+                obj.material = new THREE.MeshStandardMaterial({
+                  color: 0xb8c4d1,
+                  roughness: 0.72,
+                  metalness: 0.05,
+                  side: THREE.DoubleSide,
+                });
+              }
+            });
+
             const box = new THREE.Box3().setFromObject(root);
             const size = new THREE.Vector3();
             const center = new THREE.Vector3();
@@ -98,6 +116,7 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selec
             camera.near = Math.max(0.01, distance / 100);
             camera.far = Math.max(1000, distance * 100);
             camera.position.set(distance * 0.75, distance * 0.55, distance * 1.15);
+            camera.lookAt(0, 0, 0);
             camera.updateProjectionMatrix();
             controls?.target?.set(0, 0, 0);
             controls?.update?.();

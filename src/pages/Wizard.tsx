@@ -1,14 +1,16 @@
 import React, { useState } from 'react'
 import Step1Drawing from './wizard/Step1Drawing'
+import Step2Mold from './wizard/Step2Mold'
 import Step2Press from './wizard/Step2Press'
 import Step3Material from './wizard/Step3Material'
 import Step4Parametri from './wizard/Step4Parametri'
 
 const steps = [
   { id: 1, title: 'Carica disegno' },
-  { id: 2, title: 'Pressa + vite' },
-  { id: 3, title: 'Materiale' },
-  { id: 4, title: 'Parametri' },
+  { id: 2, title: 'Stampo' },
+  { id: 3, title: 'Pressa + vite' },
+  { id: 4, title: 'Materiale' },
+  { id: 5, title: 'Parametri' },
 ]
 
 export default function Wizard() {
@@ -35,9 +37,10 @@ export default function Wizard() {
 
       <div className="bg-white border border-blue-900 rounded-lg p-4 mb-4">
         {index === 0 && <Step1Drawing onNext={() => setIndex(1)} />}
-        {index === 1 && <Step2Press onNext={() => setIndex(2)} onBack={() => setIndex(0)} />}
-        {index === 2 && <Step3Material onNext={() => setIndex(3)} onBack={() => setIndex(1)} />}
-        {index === 3 && <Step4Parametri onBack={() => setIndex(2)} />}
+        {index === 1 && <Step2Mold onNext={() => setIndex(2)} onBack={() => setIndex(0)} />}
+        {index === 2 && <Step2Press onNext={() => setIndex(3)} onBack={() => setIndex(1)} />}
+        {index === 3 && <Step3Material onNext={() => setIndex(4)} onBack={() => setIndex(2)} />}
+        {index === 4 && <Step4Parametri onBack={() => setIndex(3)} />}
       </div>
 
       <div className="flex justify-between mt-4">

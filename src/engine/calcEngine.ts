@@ -476,9 +476,15 @@ export function calculateParameters(input: CalcInput): CalcResult {
     // best-effort: do not break calculation flow
   }
 
-  // Merge material fx warnings/assumptions after press limits so press-limit warnings appear first
+  // Merge material fx warnings/assumptions after press limits. Keep machine-limit
+  // diagnostics ahead of material diagnostics: consumers use this order to show
+  // hard machine constraints before process advice.
   try {
-    pushUnique(result.warnings = result.warnings ?? [], fxWarnings);
+    const existingWarnings = (result.warnings ?? []).map(String);
+    const machineWarnings = existingWarnings.filter((s: string) => /limit|clamp|max|press.*max/i.test(s));
+    const otherWarnings = existingWarnings.filter((s: string) => !/limit|clamp|max|press.*max/i.test(s));
+    result.warnings = Array.from(new Set([...machineWarnings, ...otherWarnings]));
+    pushUnique(result.warnings, fxWarnings);
     // also include material assumptions in warnings (legacy behavior expects them merged)
     pushUnique(result.warnings, fxAssumptions);
     // keep assumptions list too for downstream consumers

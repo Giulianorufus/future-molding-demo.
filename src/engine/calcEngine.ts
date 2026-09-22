@@ -53,6 +53,9 @@ export interface CalcResult {
   shotVolumeCm3?: number;
   pieceVolumeCm3?: number;
   runnerVolumeCm3?: number;
+  cavityCount?: number;
+  totalPartsVolumeCm3?: number;
+  projectedAreaTotalCm2?: number;
   vpVolumeCm3?: number;
   packTimeSec?: number;
   plastificationTimeSec?: number;

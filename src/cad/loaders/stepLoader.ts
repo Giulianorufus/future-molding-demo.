@@ -309,7 +309,9 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       }
     }
 
-    const areaApprox = size.x * size.y;
+    // OCCT coordinates are millimetres. XY projection is mm²; convert to cm².
+    // This is a bounding-box projection estimate, not an exact silhouette projection.
+    const areaApprox = (size.x * size.y) / 100;
 
     let viewerUrl: string;
     try {
@@ -333,6 +335,14 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
 
     if (!volume || (volume ?? 0) <= 0) {
       throw new Error("Geometria non valida: volume pezzo mancante o nullo.");
+    }
+
+    // Physical sanity check: a closed part cannot have a volume larger than its
+    // own bounding box. Reject impossible triangulated-volume results instead
+    // of feeding them to molding calculations.
+    const bboxVolumeCm3 = (size.x * size.y * size.z) / 1000;
+    if (!Number.isFinite(bboxVolumeCm3) || bboxVolumeCm3 <= 0 || volume > bboxVolumeCm3 * 1.001) {
+      throw new Error(`Volume CAD incoerente: ${volume.toFixed(3)} cm³ supera il bounding box (${bboxVolumeCm3.toFixed(3)} cm³). Dato non utilizzato nei calcoli.`);
     }
 
     const geo = {

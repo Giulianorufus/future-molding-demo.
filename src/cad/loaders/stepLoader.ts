@@ -90,10 +90,9 @@ async function exportGeometryToGlbUrl(geometry: THREE.BufferGeometry): Promise<s
   const mesh = new THREE.Mesh(geometry, material);
   scene.add(mesh);
 
-  // Dynamically load GLTFExporter
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const expMod = require("three/examples/jsm/exporters/GLTFExporter");
-  const GLTFExporter = expMod?.GLTFExporter ?? expMod?.default ?? expMod;
+  // Load the ESM exporter in the browser. Using require() here can fail under Vite.
+  const expMod: any = await import("three/examples/jsm/exporters/GLTFExporter");
+  const GLTFExporter = expMod?.GLTFExporter ?? expMod?.default;
   if (!GLTFExporter) throw new Error("GLTFExporter non disponibile");
 
   const exporter = new GLTFExporter();
@@ -113,15 +112,15 @@ async function exportGeometryToGlbUrl(geometry: THREE.BufferGeometry): Promise<s
   return URL.createObjectURL(blob);
 }
 
-function fallbackResult(file: File, format: "step" | "iges"): CadAnalysisResult {
-  const url = URL.createObjectURL(file);
+function fallbackResult(_file: File, format: "step" | "iges"): CadAnalysisResult {
+  // A raw STEP/IGES blob is not a valid GLB and must never be handed to GLTFLoader.
   return {
     format,
     volumeCm3: null,
     areaApproxCm2: null,
     thicknessAvgMm: null,
     bbox: { x: 0, y: 0, z: 0 },
-    viewerUrl: url,
+    viewerUrl: "",
   };
 }
 
@@ -213,16 +212,16 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
           previewUrl: null,
-          error: null,
+          error: "OCCT non ha prodotto una geometria visualizzabile.",
           isLoading: false,
-          conversionStatus: 'ready',
-          conversionMessage: undefined,
+          conversionStatus: 'error',
+          conversionMessage: "Conversione STEP/IGES non riuscita.",
         });
       }
       return fb;
@@ -236,8 +235,8 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
@@ -256,8 +255,8 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
@@ -311,8 +310,8 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,

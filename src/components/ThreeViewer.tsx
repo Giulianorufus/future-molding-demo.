@@ -43,17 +43,29 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selec
     scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
     let stop = false;
+    let controls: any = null;
     const animate = () => {
       if (stop) return;
       requestAnimationFrame(animate);
+      controls?.update?.();
       renderer.render(scene, camera);
     };
 
     (async () => {
       try {
         setStatus("Importing loader");
-        const mod: any = await import("three/examples/jsm/loaders/GLTFLoader");
-        const GLTFLoader = mod.GLTFLoader ?? mod.default;
+        const [loaderMod, controlsMod]: any[] = await Promise.all([
+          import("three/examples/jsm/loaders/GLTFLoader"),
+          import("three/examples/jsm/controls/OrbitControls"),
+        ]);
+        const GLTFLoader = loaderMod.GLTFLoader ?? loaderMod.default;
+        const OrbitControls = controlsMod.OrbitControls ?? controlsMod.default;
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.enablePan = true;
+        controls.enableZoom = true;
+        controls.enableRotate = true;
         const loader = new GLTFLoader();
         setStatus("Loading model");
         loader.load(
@@ -79,6 +91,16 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selec
             root.scale.setScalar(scale);
 
             scene.add(root);
+
+            // Fit the camera to the converted model and orbit around its center.
+            const fittedSize = maxDim * scale;
+            const distance = fittedSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+            camera.near = Math.max(0.01, distance / 100);
+            camera.far = Math.max(1000, distance * 100);
+            camera.position.set(distance * 0.75, distance * 0.55, distance * 1.15);
+            camera.updateProjectionMatrix();
+            controls?.target?.set(0, 0, 0);
+            controls?.update?.();
 
             // If a selectedPin is provided, add a simple marker sphere to the scene
             if (selectedPin) {
@@ -116,7 +138,9 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selec
 
     return () => {
       stop = true;
+      controls?.dispose?.();
       renderer.dispose();
+      renderer.forceContextLoss?.();
       containerRef.current && (containerRef.current.innerHTML = "");
     };
   }, [effectiveUrl, selectedPin]);

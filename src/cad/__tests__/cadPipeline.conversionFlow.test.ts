@@ -11,7 +11,7 @@ describe('CAD Pipeline: STEP Conversion Flow', () => {
 
     // Import and call startCadPipeline
     const { startCadPipeline } = await import('../cadPipeline');
-    startCadPipeline(stepFile);
+    const pending = startCadPipeline(stepFile);
 
     // Immediately check state (before async conversion completes)
     const state = useDrawingStore.getState();
@@ -24,18 +24,20 @@ describe('CAD Pipeline: STEP Conversion Flow', () => {
     // In browser: 'converting', In Jest/Node: may be 'converting' or 'error'
     expect(['converting', 'error']).toContain(state.conversionStatus);
     expect(state.conversionMessage).toBeDefined();
+    await pending;
   });
 
   it('should NOT assign object URL for STEP files to viewerUrl', async () => {
     const stepFile = new File(['dummy'], 'model.step', { type: 'application/octet-stream' });
     const { startCadPipeline } = await import('../cadPipeline');
     
-    startCadPipeline(stepFile);
+    const pending = startCadPipeline(stepFile);
     const state = useDrawingStore.getState();
     
     // Critical check: viewerUrl must NOT be a blob URL (object URL)
     // It should be null because conversion is pending
     expect(state.viewerUrl).toBeNull();
+    await pending;
   });
 
   it('should detect GLB file and assign viewerUrl immediately', async () => {
@@ -59,23 +61,25 @@ describe('CAD Pipeline: STEP Conversion Flow', () => {
     const igesFile = new File(['dummy IGES'], 'model.iges', { type: 'application/octet-stream' });
     const { startCadPipeline } = await import('../cadPipeline');
     
-    startCadPipeline(igesFile);
+    const pending = startCadPipeline(igesFile);
     const state = useDrawingStore.getState();
     
     // IGES files should be handled like STEP files
     expect(state.viewerUrl).toBeNull();
     expect(state.conversionStatus).toBe('converting');
+    await pending;
   });
 
   it('should distinguish between .step and .stp extensions', async () => {
     const stpFile = new File(['dummy STP'], 'model.stp', { type: 'application/octet-stream' });
     const { startCadPipeline } = await import('../cadPipeline');
     
-    startCadPipeline(stpFile);
+    const pending = startCadPipeline(stpFile);
     const state = useDrawingStore.getState();
     
     // Should be treated as STEP file (conversion mode)
     expect(state.conversionStatus).toBe('converting');
     expect(state.viewerUrl).toBeNull();
+    await pending;
   });
 });

@@ -9,6 +9,7 @@ import { sanitizeFileName } from '@/utils/sanitizeFileName';
 import { useToast } from '@/components/ui/use-toast';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg']);
+const CAD_EXCHANGE_EXTENSIONS = new Set(['step', 'stp', 'iges', 'igs']);
 
 export function isImageFile(file: File): boolean {
   const ext = file.name.split('.').pop()?.toLowerCase();
@@ -18,6 +19,12 @@ export function isImageFile(file: File): boolean {
 export function getUrlForDrawingStore(file: File, url: string) {
   if (isImageFile(file)) {
     return { viewerUrl: null, previewUrl: url };
+  }
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  // STEP/IGES are not directly renderable by GLTFLoader. The CAD pipeline
+  // will publish a GLB URL only after OCCT conversion succeeds.
+  if (ext && CAD_EXCHANGE_EXTENSIONS.has(ext)) {
+    return { viewerUrl: null, previewUrl: null };
   }
   return { viewerUrl: url, previewUrl: null };
 }

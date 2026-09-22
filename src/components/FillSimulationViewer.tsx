@@ -43,11 +43,14 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     let fillPlane: THREE.Plane | null = null
     let minX = -40, maxX = 40
     const fillMaterials: THREE.ShaderMaterial[] = []
+    const originalGeometries = new Map<THREE.Mesh, THREE.BufferGeometry>()
     const rebuildGateFill = () => {
       if (!model) return
       fillMaterials.splice(0).forEach(m => m.dispose())
       model.traverse((o: any) => {
         if (!o.isMesh || !o.geometry) return
+        if (!originalGeometries.has(o)) originalGeometries.set(o, o.geometry)
+        else o.geometry = originalGeometries.get(o)!
         const gp = useDrawingStore.getState().gatePoint
         if (!gp) return
         const worldGate = new THREE.Vector3(gp.x, gp.y, gp.z)
@@ -79,6 +82,21 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
         fillMaterials.push(material)
       })
       fillPlane = null
+    }
+
+    const restoreAxisFill = () => {
+      if (!model) return
+      fillMaterials.splice(0).forEach(m => m.dispose())
+      fillPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), minX)
+      model.traverse((o: any) => {
+        if (!o.isMesh) return
+        const original = originalGeometries.get(o)
+        if (original) o.geometry = original
+        o.material = new THREE.MeshStandardMaterial({
+          color: 0x1597e5, roughness: 0.6, metalness: 0.02,
+          side: THREE.DoubleSide, clippingPlanes: [fillPlane!],
+        })
+      })
     }
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
@@ -138,6 +156,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
         fillPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), minX)
         model.traverse((o: any) => {
           if (!o.isMesh) return
+          originalGeometries.set(o, o.geometry)
           o.frustumCulled = false
           o.material = new THREE.MeshStandardMaterial({
             color: 0x1597e5, roughness: 0.6, metalness: 0.02,
@@ -171,6 +190,11 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     return () => { cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = '' }
   }, [viewerUrl, durationMs, setDrawingResult])
 
+  useEffect(() => {
+    // Gate removal is handled by remount-safe state; selecting a new gate rebuilds the field.
+    if (!gatePoint) setSelectingGate(false)
+  }, [gatePoint])
+
   const reset = () => { setRunning(false); runningRef.current = false; setProgress(0); progressRef.current = 0; startRef.current = 0 }
   const toggle = () => {
     if (progressRef.current >= 1) { progressRef.current = 0; setProgress(0); startRef.current = 0 }
@@ -185,7 +209,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     </div>
     <div className="mb-2 flex items-center gap-2">
       <button className={`rounded px-3 py-2 text-sm ${selectingGate ? 'bg-yellow-400 text-blue-950' : 'border'}`} onClick={() => setSelectingGate(v => !v)}>{selectingGate ? 'Clicca sul pezzo…' : gatePoint ? 'Cambia punto iniezione' : 'Seleziona punto iniezione'}</button>
-      {gatePoint && <button className="rounded border px-3 py-2 text-sm" onClick={() => setDrawingResult({ gatePoint: null, gateNormal: null })}>Rimuovi gate</button>}
+      {gatePoint && <button className="rounded border px-3 py-2 text-sm" onClick={() => { setDrawingResult({ gatePoint: null, gateNormal: null }); reset(); }}>Rimuovi gate</button>}
       {gatePoint && <span className="text-xs text-gray-500">Gate selezionato</span>}
     </div>
     <div ref={host} className={`w-full overflow-hidden rounded ${selectingGate ? 'cursor-crosshair' : ''}`} style={{ height: 360 }} />

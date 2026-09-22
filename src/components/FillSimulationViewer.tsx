@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useDrawingStore } from '@/stores/drawingStore'
+import { buildSurfaceFillArrival } from '@/simulation/fillArrival'
 
 type Props = { viewerUrl: string; durationMs?: number }
 
@@ -41,6 +42,44 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     let model: THREE.Object3D | null = null
     let fillPlane: THREE.Plane | null = null
     let minX = -40, maxX = 40
+    const fillMaterials: THREE.ShaderMaterial[] = []
+    const rebuildGateFill = () => {
+      if (!model) return
+      fillMaterials.splice(0).forEach(m => m.dispose())
+      model.traverse((o: any) => {
+        if (!o.isMesh || !o.geometry) return
+        const gp = useDrawingStore.getState().gatePoint
+        if (!gp) return
+        const worldGate = new THREE.Vector3(gp.x, gp.y, gp.z)
+        const localGate = o.worldToLocal(worldGate.clone())
+        const field = buildSurfaceFillArrival(o.geometry, localGate)
+        if (!field) return
+        o.geometry = field.geometry
+        const material = new THREE.ShaderMaterial({
+          uniforms: { uProgress: { value: progressRef.current } },
+          vertexShader: `
+            attribute float fillArrival;
+            varying float vArrival;
+            void main() {
+              vArrival = fillArrival;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float uProgress;
+            varying float vArrival;
+            void main() {
+              if (vArrival > uProgress) discard;
+              gl_FragColor = vec4(0.082, 0.592, 0.898, 1.0);
+            }
+          `,
+          side: THREE.DoubleSide,
+        })
+        o.material = material
+        fillMaterials.push(material)
+      })
+      fillPlane = null
+    }
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     const gateMarker = new THREE.Mesh(
@@ -73,6 +112,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       })
       gateMarker.position.copy(hit.point)
       gateMarker.visible = true
+      rebuildGateFill()
       selectingGateRef.current = false
       setSelectingGate(false)
     }
@@ -105,6 +145,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
           })
         })
         renderer.localClippingEnabled = true
+        if (useDrawingStore.getState().gatePoint) rebuildGateFill()
         const d = 120
         camera.position.set(d * .75, d * .55, d * 1.15)
         camera.lookAt(0, 0, 0)
@@ -121,12 +162,13 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
         setProgress(p)
         if (p >= 1) { runningRef.current = false; setRunning(false) }
       }
-      if (fillPlane) fillPlane.constant = minX + (maxX - minX) * progressRef.current
+      if (fillMaterials.length) fillMaterials.forEach(m => { m.uniforms.uProgress.value = progressRef.current })
+      else if (fillPlane) fillPlane.constant = minX + (maxX - minX) * progressRef.current
       controls?.update?.()
       renderer.render(scene, camera)
     }
     frame = requestAnimationFrame(loop)
-    return () => { cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = '' }
+    return () => { cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = '' }
   }, [viewerUrl, durationMs, setDrawingResult])
 
   const reset = () => { setRunning(false); runningRef.current = false; setProgress(0); progressRef.current = 0; startRef.current = 0 }

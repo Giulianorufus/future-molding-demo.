@@ -18,6 +18,20 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
 
   const index = geometry.getIndex()
   const neighbors: Array<Map<number, number>> = Array.from({ length: position.count }, () => new Map())
+  // STEP tessellation commonly duplicates vertices along face boundaries.
+  // Weld coincident positions logically for graph traversal without altering render geometry.
+  const epsilon = Math.max(1e-5, geometry.boundingSphere?.radius ? geometry.boundingSphere.radius * 1e-6 : 1e-5)
+  const buckets = new Map<string, number[]>()
+  const keyOf = (x: number, y: number, z: number) =>
+    `${Math.round(x / epsilon)}|${Math.round(y / epsilon)}|${Math.round(z / epsilon)}`
+  for (let i = 0; i < position.count; i++) {
+    a.fromBufferAttribute(position, i)
+    const key = keyOf(a.x, a.y, a.z)
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(i)
+    else buckets.set(key, [i])
+  }
+
   const a = new THREE.Vector3()
   const b = new THREE.Vector3()
 
@@ -34,6 +48,17 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
 
   const triangle = (ia: number, ib: number, ic: number) => {
     link(ia, ib); link(ib, ic); link(ic, ia)
+  }
+
+  // Zero-cost graph links join duplicated tessellation vertices at identical
+  // positions, allowing the front to cross CAD face seams.
+  for (const bucket of buckets.values()) {
+    if (bucket.length < 2) continue
+    const root = bucket[0]
+    for (let i = 1; i < bucket.length; i++) {
+      neighbors[root].set(bucket[i], 0)
+      neighbors[bucket[i]].set(root, 0)
+    }
   }
 
   if (index) {
@@ -99,11 +124,21 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
   }
 
   let maxDistance = 0
-  for (let i = 0; i < dist.length; i++) if (Number.isFinite(dist[i])) maxDistance = Math.max(maxDistance, dist[i])
+  let reached = 0
+  for (let i = 0; i < dist.length; i++) {
+    if (!Number.isFinite(dist[i])) continue
+    reached++
+    maxDistance = Math.max(maxDistance, dist[i])
+  }
   if (!(maxDistance > 0)) return null
 
   const arrival = new Float32Array(position.count)
   for (let i = 0; i < dist.length; i++) arrival[i] = Number.isFinite(dist[i]) ? dist[i] / maxDistance : 1
   geometry.setAttribute('fillArrival', new THREE.BufferAttribute(arrival, 1))
+  geometry.userData.fillReachability = {
+    reachedVertices: reached,
+    totalVertices: position.count,
+    reachedRatio: reached / position.count,
+  }
   return { geometry, minDistance: 0, maxDistance }
 }

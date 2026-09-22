@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useDrawingStore } from '@/stores/drawingStore'
-import { buildSurfaceFillArrival } from '@/simulation/fillArrival'
+import { useMaterialStore } from '@/stores/materialStore'
+import { materialCatalog } from '@/data/materialCatalog'
+import { buildSurfaceFillArrival, type FillProcessContext } from '@/simulation/fillArrival'
 
 type Props = { viewerUrl: string; durationMs?: number }
 
@@ -14,6 +16,11 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
   const [running, setRunning] = useState(false)
   const gatePoint = useDrawingStore((s) => s.gatePoint)
   const setDrawingResult = useDrawingStore((s) => s.setResult)
+  const selectedMaterialId = useMaterialStore((s) => s.selectedMaterialId)
+  const selectedMaterial = materialCatalog.find((material) => material.id === selectedMaterialId)
+  const fillProcessContext: FillProcessContext | undefined = selectedMaterial
+    ? { materialId: selectedMaterial.id, materialFlowFactor: selectedMaterial.flowFactor }
+    : undefined
   const [selectingGate, setSelectingGate] = useState(false)
   const selectingGateRef = useRef(false)
   useEffect(() => { selectingGateRef.current = selectingGate }, [selectingGate])
@@ -56,7 +63,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
         if (!gp) return
         const worldGate = new THREE.Vector3(gp.x, gp.y, gp.z)
         const localGate = o.worldToLocal(worldGate.clone())
-        const field = buildSurfaceFillArrival(o.geometry, localGate)
+        const field = buildSurfaceFillArrival(o.geometry, localGate, { processContext: fillProcessContext })
         if (!field) return
         o.geometry = field.geometry
         const material = new THREE.ShaderMaterial({
@@ -216,7 +223,7 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       disposed = true
       unsubscribeGate(); cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = ''
     }
-  }, [viewerUrl, durationMs, setDrawingResult])
+  }, [viewerUrl, durationMs, setDrawingResult, selectedMaterialId])
 
   useEffect(() => {
     // Gate removal is handled by remount-safe state; selecting a new gate rebuilds the field.

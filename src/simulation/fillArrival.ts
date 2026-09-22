@@ -3,7 +3,15 @@ import * as THREE from 'three'
 export type FillArrivalField = {
   geometry: THREE.BufferGeometry
   minDistance: number
+  /** Raw relative resistance index; not seconds or milliseconds. */
+  maxRawArrival: number
+  /** Backward-compatible alias for maxRawArrival. */
   maxDistance: number
+  /** Dimensionless normalized spatial arrival field, also stored as fillArrival. */
+  spatialFillArrival: Float32Array
+  /** Dimensionless material resistance factor derived from canonical flowFactor. */
+  viscosityFactor: number
+  materialId?: string
   minLocalThickness: number
   maxLocalThickness: number
   avgLocalThickness: number
@@ -17,12 +25,20 @@ export type FillArrivalField = {
 export type FillArrivalOptions = {
   thicknessAvgMm?: number | null
   maxMeasuredVertices?: number
+  processContext?: FillProcessContext
+}
+
+export type FillProcessContext = {
+  materialId?: string
+  materialFlowFactor?: number
 }
 
 // Numerical safety bounds, not physical validity limits for CAD input.
 export const FILL_THICKNESS_GUARD_MM = { min: 0.05, max: 100 }
 const MIN_THICKNESS_FACTOR = 0.5
 const MAX_THICKNESS_FACTOR = 3
+const MIN_VISCOSITY_FACTOR = 0.25
+const MAX_VISCOSITY_FACTOR = 4
 
 function clampThickness(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0
@@ -39,6 +55,11 @@ export function computeThicknessFactor(avgThicknessMm: number, edgeThicknessMm: 
 export function computeFlowCost(geometricDistance: number, avgThicknessMm: number, edgeThicknessMm: number): number {
   const distance = Number.isFinite(geometricDistance) && geometricDistance >= 0 ? geometricDistance : 0
   return distance * computeThicknessFactor(avgThicknessMm, edgeThicknessMm)
+}
+
+export function computeViscosityFactor(materialFlowFactor?: number): number {
+  if (!Number.isFinite(materialFlowFactor) || !materialFlowFactor || materialFlowFactor <= 0) return 1
+  return Math.max(MIN_VISCOSITY_FACTOR, Math.min(MAX_VISCOSITY_FACTOR, 1 / materialFlowFactor))
 }
 
 function fallbackThicknessFromMesh(geometry: THREE.BufferGeometry, fallback?: number | null): number {
@@ -169,6 +190,7 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
   const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined
   if (!position || position.count === 0) return null
   const thickness = buildLocalThickness(geometry, options)
+  const viscosityFactor = computeViscosityFactor(options.processContext?.materialFlowFactor)
   geometry.setAttribute('localThickness', new THREE.BufferAttribute(thickness.values, 1))
   const thicknessValues = thickness.values
   const averageThickness = Array.from(thicknessValues).reduce((sum, value) => sum + value, 0) / thicknessValues.length
@@ -178,6 +200,7 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     minLocalThickness: Math.min(...thicknessValues),
     maxLocalThickness: Math.max(...thicknessValues),
     avgLocalThickness: averageThickness,
+    viscosityFactor,
     measuredThicknessVertices: thickness.measuredCount,
     estimatedThicknessVertices: position.count - thickness.measuredCount - thickness.fallbackCount,
     fallbackThicknessCount: thickness.fallbackCount,
@@ -206,7 +229,8 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     b.fromBufferAttribute(position, j)
     const geometricDistance = a.distanceTo(b)
     const edgeThickness = (thicknessValues[i] + thicknessValues[j]) * 0.5
-    const flowCost = computeFlowCost(geometricDistance, averageThickness, edgeThickness)
+    const thicknessFactor = computeThicknessFactor(averageThickness, edgeThickness)
+    const flowCost = geometricDistance * thicknessFactor * viscosityFactor
     const w = flowCost
     const prev = neighbors[i].get(j)
     if (prev === undefined || w < prev) {
@@ -312,7 +336,11 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
   return {
     geometry,
     minDistance: 0,
+    maxRawArrival: maxDistance,
     maxDistance,
+    spatialFillArrival: arrival,
+    viscosityFactor,
+    materialId: options.processContext?.materialId,
     minLocalThickness: Math.min(...thicknessValues),
     maxLocalThickness: Math.max(...thicknessValues),
     avgLocalThickness: averageThickness,

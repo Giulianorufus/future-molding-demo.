@@ -188,7 +188,19 @@ export function calculateParameters(input: CalcInput): CalcResult {
     // non-blocking
   }
 
-  const projArea = input.projAreaCm2;
+  // Mold configuration is intentionally separate from single-part CAD geometry.
+  // Use totals only for machine sizing / shot / clamp calculations.
+  const cavityCount = Math.max(1, Math.floor(Number((ds as any).cavityCount) || 1));
+  const cavityCountConfirmed = Boolean((ds as any).cavityCountConfirmed);
+  const feedSystem = ((ds as any).feedSystem ?? 'unknown') as 'unknown' | 'hot' | 'cold';
+  const configuredRunnerVol = typeof (ds as any).runnerVolumeCm3 === 'number' ? Math.max(0, (ds as any).runnerVolumeCm3) : null;
+  const configuredRunnerArea = typeof (ds as any).runnerProjectedAreaCm2 === 'number' ? Math.max(0, (ds as any).runnerProjectedAreaCm2) : 0;
+  const singlePartArea = typeof input.projAreaCm2 === 'number' && input.projAreaCm2 > 0
+    ? input.projAreaCm2
+    : (typeof (ds as any).surfaceCm2 === 'number' ? (ds as any).surfaceCm2 : undefined);
+  const projArea = typeof singlePartArea === 'number'
+    ? singlePartArea * cavityCount + (feedSystem === 'cold' ? configuredRunnerArea : 0)
+    : undefined;
   const effectivePress: any = press ?? (input as any).machine ?? {};
   const clampBaseTon = effectivePress.clampForceTon ?? (effectivePress.tonnellaggio_kN ? Math.round(effectivePress.tonnellaggio_kN / 9.80665) : 0);
   let clampForceTon = typeof projArea === "number" && projArea > 0 ? recommendedClampForceTon(projArea, material.family) : Math.round((clampBaseTon || 0) * 0.7);
@@ -267,11 +279,21 @@ export function calculateParameters(input: CalcInput): CalcResult {
     // non-blocking: keep existing clampForceTon
   }
 
-  const pieceVol = typeof input.volumeCm3 === 'number' && input.volumeCm3 > 0 ? input.volumeCm3 : (typeof input.projAreaCm2 === 'number' && input.projAreaCm2 > 0 ? Math.round(input.projAreaCm2 * 0.2) : 10);
-  const runnerVol = Math.max(1, Math.round(pieceVol * 0.05));
-  const totalShot = Math.round(pieceVol + runnerVol);
+  const pieceVol = typeof input.volumeCm3 === 'number' && input.volumeCm3 > 0
+    ? input.volumeCm3
+    : (typeof (ds as any).volumeCm3 === 'number' && (ds as any).volumeCm3 > 0
+      ? (ds as any).volumeCm3
+      : (typeof singlePartArea === 'number' && singlePartArea > 0 ? Math.round(singlePartArea * 0.2) : 10));
+  const totalPartsVol = pieceVol * cavityCount;
+  // No invented 5% runner. Hot runner contributes no cold-runner waste here;
+  // cold runner uses only the operator-provided value; unknown stays provisional.
+  const runnerVol = feedSystem === 'cold' ? (configuredRunnerVol ?? 0) : 0;
+  const totalShot = Math.round((totalPartsVol + runnerVol) * 100) / 100;
   
   const warnings: string[] = [];
+  if (!cavityCountConfirmed) warnings.push('Numero cavità non confermato: dose e forza di chiusura sono provvisorie');
+  if (feedSystem === 'unknown') warnings.push('Sistema di alimentazione non noto: dose e forza di chiusura sono provvisorie');
+  if (feedSystem === 'cold' && configuredRunnerVol === null) warnings.push('Volume materozza/canali non inserito: dose calcolata sui soli pezzi');
     const ep: any = effectivePress as any;
     const maxSpeed = ep?.maxInjectionSpeed_cm3_s ?? ep?.maxInjectionSpeed_cm3s ?? ep?.maxSpeedCm3s ?? ep?.maxSpeed_cm3s ?? ep?.maxSpeedCm3s;
     if (maxSpeed && injectionSpeedCm3s > maxSpeed) warnings.push(`Velocità iniezione ${injectionSpeedCm3s} cm³/s > max pressa ${maxSpeed} cm³/s`);
@@ -387,6 +409,9 @@ export function calculateParameters(input: CalcInput): CalcResult {
     warnings,
     shotVolumeCm3: totalShot,
     pieceVolumeCm3: pieceVol,
+    cavityCount,
+    totalPartsVolumeCm3: totalPartsVol,
+    projectedAreaTotalCm2: projArea,
     runnerVolumeCm3: runnerVol,
     vpVolumeCm3: vpVolume,
     packTimeSec: packTime,

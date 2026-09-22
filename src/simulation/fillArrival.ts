@@ -18,6 +18,8 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
 
   const index = geometry.getIndex()
   const neighbors: Array<Map<number, number>> = Array.from({ length: position.count }, () => new Map())
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
   // STEP tessellation commonly duplicates vertices along face boundaries.
   // Weld coincident positions logically for graph traversal without altering render geometry.
   const epsilon = Math.max(1e-5, geometry.boundingSphere?.radius ? geometry.boundingSphere.radius * 1e-6 : 1e-5)
@@ -31,9 +33,6 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     if (bucket) bucket.push(i)
     else buckets.set(key, [i])
   }
-
-  const a = new THREE.Vector3()
-  const b = new THREE.Vector3()
 
   const link = (i: number, j: number) => {
     a.fromBufferAttribute(position, i)

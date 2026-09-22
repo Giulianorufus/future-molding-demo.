@@ -11,6 +11,8 @@ export type DrawingState = {
   feedSystem: 'unknown' | 'hot' | 'cold'
   runnerVolumeCm3: number | null
   runnerProjectedAreaCm2: number | null
+  gatePoint: { x: number; y: number; z: number } | null
+  gateNormal: { x: number; y: number; z: number } | null
   mesh?: { positions: Float32Array | number[]; indices?: Uint32Array | number[]; bbox_mm?: { x: number; y: number; z: number } | null } | null
   previewUrl: string | null
   isLoading: boolean
@@ -38,6 +40,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   feedSystem: 'unknown',
   runnerVolumeCm3: null,
   runnerProjectedAreaCm2: null,
+  gatePoint: null,
+  gateNormal: null,
   previewUrl: null,
   isLoading: false,
   error: null,
@@ -74,6 +78,8 @@ export const useDrawingStore = create<DrawingState>((set) => ({
       feedSystem: 'unknown',
       runnerVolumeCm3: null,
       runnerProjectedAreaCm2: null,
+      gatePoint: null,
+      gateNormal: null,
       previewUrl: null,
       isLoading: false,
       error: null,

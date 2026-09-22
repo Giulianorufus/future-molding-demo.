@@ -30,7 +30,15 @@ async function loadOcctModule(): Promise<OcctModule | null> {
       factory = (mod as any).default ?? mod;
     }
 
-    const occt: any = await factory();
+    const occt: any = await factory(
+      typeof window === "undefined"
+        ? undefined
+        : {
+            // occt-import-js is Emscripten-based. Point its runtime explicitly at
+            // the artifacts copied by postinstall into Vite's public directory.
+            locateFile: (fileName: string) => `/vendor/occt/${fileName}`,
+          }
+    );
     if (!occt) {
       occtCache = null;
       return null;

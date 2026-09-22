@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ maestro ]
+    branches: [ main ]
   pull_request:
-    branches: [ maestro ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm test -- --runInBand
       - run: npm run build
 

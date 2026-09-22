@@ -4,6 +4,159 @@ export type FillArrivalField = {
   geometry: THREE.BufferGeometry
   minDistance: number
   maxDistance: number
+  minLocalThickness: number
+  maxLocalThickness: number
+  avgLocalThickness: number
+  measuredThicknessVertices: number
+  estimatedThicknessVertices: number
+  fallbackThicknessCount: number
+  reachableVertices: number
+  totalVertices: number
+}
+
+export type FillArrivalOptions = {
+  thicknessAvgMm?: number | null
+  maxMeasuredVertices?: number
+}
+
+// Numerical safety bounds, not physical validity limits for CAD input.
+export const FILL_THICKNESS_GUARD_MM = { min: 0.05, max: 100 }
+const MIN_THICKNESS_FACTOR = 0.5
+const MAX_THICKNESS_FACTOR = 3
+
+function clampThickness(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0
+    ? Math.max(FILL_THICKNESS_GUARD_MM.min, Math.min(FILL_THICKNESS_GUARD_MM.max, value))
+    : fallback
+}
+
+export function computeThicknessFactor(avgThicknessMm: number, edgeThicknessMm: number): number {
+  const average = clampThickness(avgThicknessMm, 2)
+  const edge = clampThickness(edgeThicknessMm, average)
+  return Math.max(MIN_THICKNESS_FACTOR, Math.min(MAX_THICKNESS_FACTOR, average / edge))
+}
+
+export function computeFlowCost(geometricDistance: number, avgThicknessMm: number, edgeThicknessMm: number): number {
+  const distance = Number.isFinite(geometricDistance) && geometricDistance >= 0 ? geometricDistance : 0
+  return distance * computeThicknessFactor(avgThicknessMm, edgeThicknessMm)
+}
+
+function fallbackThicknessFromMesh(geometry: THREE.BufferGeometry, fallback?: number | null): number {
+  if (fallback && Number.isFinite(fallback) && fallback > 0) return clampThickness(fallback, 2)
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined
+  if (!position || position.count < 3) return 2
+  const index = geometry.getIndex()
+  let area = 0
+  let signedVolume = 0
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  const addTriangle = (ia: number, ib: number, ic: number) => {
+    a.fromBufferAttribute(position, ia)
+    b.fromBufferAttribute(position, ib)
+    c.fromBufferAttribute(position, ic)
+    area += b.clone().sub(a).cross(c.clone().sub(a)).length() * 0.5
+    signedVolume += a.dot(b.clone().cross(c)) / 6
+  }
+  if (index) {
+    for (let i = 0; i + 2 < index.count; i += 3) addTriangle(index.getX(i), index.getX(i + 1), index.getX(i + 2))
+  } else {
+    for (let i = 0; i + 2 < position.count; i += 3) addTriangle(i, i + 1, i + 2)
+  }
+  if (area > 0 && Math.abs(signedVolume) > 0) return clampThickness((2 * Math.abs(signedVolume)) / area, 2)
+  geometry.computeBoundingBox()
+  const box = geometry.boundingBox
+  const minDimension = box ? Math.min(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z) : 0
+  return clampThickness(minDimension, 2)
+}
+
+function buildLocalThickness(geometry: THREE.BufferGeometry, options: FillArrivalOptions): { values: Float32Array; fallbackCount: number; measuredCount: number; source: string } {
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute
+  const existing = geometry.getAttribute('localThickness') as THREE.BufferAttribute | undefined
+  const fallback = fallbackThicknessFromMesh(geometry, options.thicknessAvgMm)
+  if (existing && existing.count === position.count) {
+    const values = new Float32Array(position.count)
+    let fallbackCount = 0
+    for (let i = 0; i < position.count; i++) {
+      const value = existing.getX(i)
+      if (Number.isFinite(value) && value > 0) values[i] = clampThickness(value, fallback)
+      else { values[i] = fallback; fallbackCount++ }
+    }
+    return { values, fallbackCount, measuredCount: position.count - fallbackCount, source: 'provided-local' }
+  }
+
+  const values = new Float32Array(position.count)
+  values.fill(fallback)
+  const measuredByVertex = new Map<number, number>()
+  const index = geometry.getIndex()
+  const triangleCount = index ? Math.floor(index.count / 3) : Math.floor(position.count / 3)
+  const maxSamples = Math.max(1, Math.min(options.maxMeasuredVertices ?? 512, position.count))
+  const step = Math.max(1, Math.ceil(triangleCount / maxSamples))
+  const probe = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }))
+  const raycaster = new THREE.Raycaster()
+  const point = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  const faceNormal = new THREE.Vector3()
+  const edgeA = new THREE.Vector3()
+  const edgeB = new THREE.Vector3()
+  geometry.computeBoundingBox()
+  const bounds = geometry.boundingBox
+  const diagonal = bounds ? bounds.min.distanceTo(bounds.max) : 1
+  const surfaceNudge = Math.max(1e-3, Math.min(0.25, diagonal * 1e-3))
+  const direction = new THREE.Vector3()
+  for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += step) {
+    const offset = triangleIndex * 3
+    const ia = index ? index.getX(offset) : offset
+    const ib = index ? index.getX(offset + 1) : offset + 1
+    const ic = index ? index.getX(offset + 2) : offset + 2
+    point.fromBufferAttribute(position, ia)
+    b.fromBufferAttribute(position, ib)
+    c.fromBufferAttribute(position, ic)
+    edgeA.copy(b).sub(point)
+    edgeB.copy(c).sub(point)
+    faceNormal.copy(edgeA).cross(edgeB).normalize()
+    if (faceNormal.lengthSq() === 0) continue
+    point.add(b).add(c).multiplyScalar(1 / 3)
+    let best = Infinity
+    for (const sign of [-1, 1]) {
+      direction.copy(faceNormal).multiplyScalar(sign)
+      // Offset and ray direction share the same sign: one of the two probes
+      // starts just inside the shell and travels toward the opposite surface.
+      raycaster.set(point.clone().addScaledVector(direction, surfaceNudge), direction)
+      raycaster.near = 1e-3
+      raycaster.far = FILL_THICKNESS_GUARD_MM.max
+      const hit = raycaster.intersectObject(probe, false).find(item => item.distance > 1e-3)
+      if (hit) best = Math.min(best, hit.distance)
+    }
+    if (Number.isFinite(best)) {
+      const value = clampThickness(best, fallback)
+      for (const vertexIndex of [ia, ib, ic]) {
+        const previous = measuredByVertex.get(vertexIndex)
+        if (previous === undefined || value < previous) measuredByVertex.set(vertexIndex, value)
+      }
+    }
+  }
+  ;(probe.material as THREE.Material).dispose()
+
+  if (measuredByVertex.size) {
+    const measured = Array.from(measuredByVertex, ([index, value]) => ({ index, value }))
+    for (let i = 0; i < position.count; i++) {
+      const direct = measuredByVertex.get(i)
+      if (direct !== undefined) { values[i] = direct; continue }
+      point.fromBufferAttribute(position, i)
+      let nearest = measured[0]
+      let nearestDistance = Infinity
+      for (const sample of measured) {
+        const samplePoint = new THREE.Vector3().fromBufferAttribute(position, sample.index)
+        const distance = point.distanceToSquared(samplePoint)
+        if (distance < nearestDistance) { nearest = sample; nearestDistance = distance }
+      }
+      values[i] = nearest.value
+    }
+    return { values, fallbackCount: 0, measuredCount: measured.length, source: 'normal-raycast+nearest-estimate' }
+  }
+  return { values, fallbackCount: position.count, measuredCount: 0, source: 'surface-volume-fallback' }
 }
 
 /**
@@ -11,10 +164,24 @@ export type FillArrivalField = {
  * Distances follow mesh edges (Dijkstra), so the front follows the part
  * surface instead of an arbitrary world axis. This is not a volumetric flow solver.
  */
-export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal: THREE.Vector3): FillArrivalField | null {
+export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal: THREE.Vector3, options: FillArrivalOptions = {}): FillArrivalField | null {
   const geometry = source.clone()
   const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined
   if (!position || position.count === 0) return null
+  const thickness = buildLocalThickness(geometry, options)
+  geometry.setAttribute('localThickness', new THREE.BufferAttribute(thickness.values, 1))
+  const thicknessValues = thickness.values
+  const averageThickness = Array.from(thicknessValues).reduce((sum, value) => sum + value, 0) / thicknessValues.length
+  geometry.userData.fillThickness = {
+    units: 'mm',
+    source: thickness.source,
+    minLocalThickness: Math.min(...thicknessValues),
+    maxLocalThickness: Math.max(...thicknessValues),
+    avgLocalThickness: averageThickness,
+    measuredThicknessVertices: thickness.measuredCount,
+    estimatedThicknessVertices: position.count - thickness.measuredCount - thickness.fallbackCount,
+    fallbackThicknessCount: thickness.fallbackCount,
+  }
 
   const index = geometry.getIndex()
   const neighbors: Array<Map<number, number>> = Array.from({ length: position.count }, () => new Map())
@@ -37,7 +204,10 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
   const link = (i: number, j: number) => {
     a.fromBufferAttribute(position, i)
     b.fromBufferAttribute(position, j)
-    const w = a.distanceTo(b)
+    const geometricDistance = a.distanceTo(b)
+    const edgeThickness = (thicknessValues[i] + thicknessValues[j]) * 0.5
+    const flowCost = computeFlowCost(geometricDistance, averageThickness, edgeThickness)
+    const w = flowCost
     const prev = neighbors[i].get(j)
     if (prev === undefined || w < prev) {
       neighbors[i].set(j, w)
@@ -139,5 +309,17 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     totalVertices: position.count,
     reachedRatio: reached / position.count,
   }
-  return { geometry, minDistance: 0, maxDistance }
+  return {
+    geometry,
+    minDistance: 0,
+    maxDistance,
+    minLocalThickness: Math.min(...thicknessValues),
+    maxLocalThickness: Math.max(...thicknessValues),
+    avgLocalThickness: averageThickness,
+    fallbackThicknessCount: thickness.fallbackCount,
+    measuredThicknessVertices: thickness.measuredCount,
+    estimatedThicknessVertices: position.count - thickness.measuredCount - thickness.fallbackCount,
+    reachableVertices: reached,
+    totalVertices: position.count,
+  }
 }

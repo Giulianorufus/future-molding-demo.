@@ -6,6 +6,11 @@ export type DrawingState = {
   volumeCm3: number | null
   surfaceCm2: number | null
   boundingBox: { x: number; y: number; z: number } | null
+  cavityCount: number
+  cavityCountConfirmed: boolean
+  feedSystem: 'unknown' | 'hot' | 'cold'
+  runnerVolumeCm3: number | null
+  runnerProjectedAreaCm2: number | null
   mesh?: { positions: Float32Array | number[]; indices?: Uint32Array | number[]; bbox_mm?: { x: number; y: number; z: number } | null } | null
   previewUrl: string | null
   isLoading: boolean
@@ -28,6 +33,11 @@ export const useDrawingStore = create<DrawingState>((set) => ({
   volumeCm3: null,
   surfaceCm2: null,
   boundingBox: null,
+  cavityCount: 1,
+  cavityCountConfirmed: false,
+  feedSystem: 'unknown',
+  runnerVolumeCm3: null,
+  runnerProjectedAreaCm2: null,
   previewUrl: null,
   isLoading: false,
   error: null,
@@ -59,6 +69,11 @@ export const useDrawingStore = create<DrawingState>((set) => ({
       volumeCm3: null,
       surfaceCm2: null,
       boundingBox: null,
+      cavityCount: 1,
+      cavityCountConfirmed: false,
+      feedSystem: 'unknown',
+      runnerVolumeCm3: null,
+      runnerProjectedAreaCm2: null,
       previewUrl: null,
       isLoading: false,
       error: null,

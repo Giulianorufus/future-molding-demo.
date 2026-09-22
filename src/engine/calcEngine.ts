@@ -206,7 +206,12 @@ export function calculateParameters(input: CalcInput): CalcResult {
     : undefined;
   const effectivePress: any = press ?? (input as any).machine ?? {};
   const clampBaseTon = effectivePress.clampForceTon ?? (effectivePress.tonnellaggio_kN ? Math.round(effectivePress.tonnellaggio_kN / 9.80665) : 0);
-  let clampForceTon = typeof projArea === "number" && projArea > 0 ? recommendedClampForceTon(projArea, material.family) : Math.round((clampBaseTon || 0) * 0.7);
+  // If projected area is unavailable we cannot derive a physical clamp force from
+  // geometry. Keep a conservative non-zero provisional value so consumers never
+  // interpret "unknown area" as "0 t required"; the warning below keeps it provisional.
+  let clampForceTon = typeof projArea === "number" && projArea > 0
+    ? recommendedClampForceTon(projArea, material.family)
+    : Math.max(1, Math.round((clampBaseTon || 0) * 0.7));
 
   function parsePercentOrNumber(value: string | number) { return parseOverride(value as any); }
 
@@ -294,6 +299,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const totalShot = Math.round((totalPartsVol + runnerVol) * 100) / 100;
   
   const warnings: string[] = [];
+  if (!(typeof projArea === 'number' && projArea > 0)) warnings.push('Area proiettata non disponibile: forza di chiusura provvisoria');
   if (!cavityCountConfirmed) warnings.push('Numero cavità non confermato: dose e forza di chiusura sono provvisorie');
   if (feedSystem === 'unknown') warnings.push('Sistema di alimentazione non noto: dose e forza di chiusura sono provvisorie');
   if (feedSystem === 'cold' && configuredRunnerVol === null) warnings.push('Volume materozza/canali non inserito: dose calcolata sui soli pezzi');

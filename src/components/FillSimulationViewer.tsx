@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { useDrawingStore } from '@/stores/drawingStore'
 
 type Props = { viewerUrl: string; durationMs?: number }
 
@@ -10,6 +11,11 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
   const startRef = useRef(0)
   const [progress, setProgress] = useState(0)
   const [running, setRunning] = useState(false)
+  const gatePoint = useDrawingStore((s) => s.gatePoint)
+  const setDrawingResult = useDrawingStore((s) => s.setResult)
+  const [selectingGate, setSelectingGate] = useState(false)
+  const selectingGateRef = useRef(false)
+  useEffect(() => { selectingGateRef.current = selectingGate }, [selectingGate])
 
   useEffect(() => { progressRef.current = progress }, [progress])
   useEffect(() => { runningRef.current = running }, [running])
@@ -35,6 +41,42 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     let model: THREE.Object3D | null = null
     let fillPlane: THREE.Plane | null = null
     let minX = -40, maxX = 40
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    const gateMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(2.2, 20, 20),
+      new THREE.MeshStandardMaterial({ color: 0xf4c430, emissive: 0x5a4300 })
+    )
+    gateMarker.visible = false
+    scene.add(gateMarker)
+
+    const placeMarkerFromStore = () => {
+      const gp = useDrawingStore.getState().gatePoint
+      gateMarker.visible = !!gp
+      if (gp) gateMarker.position.set(gp.x, gp.y, gp.z)
+    }
+    placeMarkerFromStore()
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!selectingGateRef.current || !model) return
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const hit = raycaster.intersectObject(model, true)[0]
+      if (!hit) return
+      const normal = hit.face?.normal?.clone() ?? new THREE.Vector3(0, 0, 1)
+      normal.transformDirection(hit.object.matrixWorld)
+      setDrawingResult({
+        gatePoint: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+        gateNormal: { x: normal.x, y: normal.y, z: normal.z },
+      })
+      gateMarker.position.copy(hit.point)
+      gateMarker.visible = true
+      selectingGateRef.current = false
+      setSelectingGate(false)
+    }
+    renderer.domElement.addEventListener('pointerdown', onPointerDown)
 
     Promise.all([
       import('three/examples/jsm/loaders/GLTFLoader'),
@@ -84,8 +126,8 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       renderer.render(scene, camera)
     }
     frame = requestAnimationFrame(loop)
-    return () => { cancelAnimationFrame(frame); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = '' }
-  }, [viewerUrl, durationMs])
+    return () => { cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = '' }
+  }, [viewerUrl, durationMs, setDrawingResult])
 
   const reset = () => { setRunning(false); runningRef.current = false; setProgress(0); progressRef.current = 0; startRef.current = 0 }
   const toggle = () => {
@@ -99,7 +141,12 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       <div><div className="font-semibold text-blue-900">Simulazione riempimento 3D</div><div className="text-xs text-gray-500">Anteprima geometrica, non solver Moldflow.</div></div>
       <div className="font-mono text-sm">{Math.round(progress * 100)}% · {(progress * durationMs / 1000).toFixed(2)} s</div>
     </div>
-    <div ref={host} className="w-full overflow-hidden rounded" style={{ height: 360 }} />
+    <div className="mb-2 flex items-center gap-2">
+      <button className={`rounded px-3 py-2 text-sm ${selectingGate ? 'bg-yellow-400 text-blue-950' : 'border'}`} onClick={() => setSelectingGate(v => !v)}>{selectingGate ? 'Clicca sul pezzo…' : gatePoint ? 'Cambia punto iniezione' : 'Seleziona punto iniezione'}</button>
+      {gatePoint && <button className="rounded border px-3 py-2 text-sm" onClick={() => setDrawingResult({ gatePoint: null, gateNormal: null })}>Rimuovi gate</button>}
+      {gatePoint && <span className="text-xs text-gray-500">Gate selezionato</span>}
+    </div>
+    <div ref={host} className={`w-full overflow-hidden rounded ${selectingGate ? 'cursor-crosshair' : ''}`} style={{ height: 360 }} />
     <input aria-label="Avanzamento riempimento" className="mt-3 w-full" type="range" min="0" max="100" value={Math.round(progress * 100)} onChange={e => { setRunning(false); runningRef.current=false; const p=Number(e.target.value)/100; setProgress(p); progressRef.current=p; startRef.current=0 }} />
     <div className="mt-2 flex gap-2"><button className="rounded bg-blue-800 px-4 py-2 text-white" onClick={toggle}>{running ? 'Pausa' : 'Avvia'}</button><button className="rounded border px-4 py-2" onClick={reset}>Reset</button></div>
   </div>

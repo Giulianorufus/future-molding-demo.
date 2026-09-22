@@ -3,7 +3,7 @@ import ThreeViewer from "./ThreeViewer";
 import { useDrawingStore } from "@/stores/drawingStore";
 
 const Viewer3D: React.FC = () => {
-  const glbUrl = useDrawingStore((s) => s.glbUrl);
+  const viewerUrl = useDrawingStore((s) => s.viewerUrl);
   const isLoading = useDrawingStore((s) => s.isLoading);
   const error = useDrawingStore((s) => s.error);
 
@@ -27,7 +27,7 @@ const Viewer3D: React.FC = () => {
     );
   }
 
-  if (!glbUrl) {
+  if (!viewerUrl) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
         Carica un disegno STEP/IGES per visualizzare il modello 3D e i difetti.
@@ -38,7 +38,7 @@ const Viewer3D: React.FC = () => {
   return (
     <div className="relative w-full h-full">
       <ThreeViewer
-        glbUrl={glbUrl}
+        viewerUrl={viewerUrl}
         pins={pins}
         selectedPinId={selectedPin ?? null}
         onSelectPin={(id: string | null) => {

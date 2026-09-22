@@ -8,6 +8,20 @@ import { analyzeBlob } from '@/utils/simpleAnalysis';
 import { sanitizeFileName } from '@/utils/sanitizeFileName';
 import { useToast } from '@/components/ui/use-toast';
 
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg']);
+
+export function isImageFile(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  return !!ext && IMAGE_EXTENSIONS.has(ext);
+}
+
+export function getUrlForDrawingStore(file: File, url: string) {
+  if (isImageFile(file)) {
+    return { viewerUrl: null, previewUrl: url };
+  }
+  return { viewerUrl: url, previewUrl: null };
+}
+
 export function useDrawingUpload() {
     const { toast } = useToast();
     const [isUploading, setIsUploading] = useState(false);
@@ -24,40 +38,50 @@ export function useDrawingUpload() {
             const meta = addDrawing({ name: file.name, size: file.size, type: file.type });
             await saveDrawingFile(meta.id, file);
 
-            // 2. Update unified model store
-            try { useDrawingStore.getState().setResult({ previewUrl: URL.createObjectURL(file) }); } catch (_) {}
+            // 2. Update unified model store with a safe temporary URL.
+            try {
+                const tmp = URL.createObjectURL(file);
+                useDrawingStore.getState().setResult(getUrlForDrawingStore(file, tmp));
+            } catch (_) {}
             // 3. Set viewer URL (try to get from DB or create object URL) into parametriStore
             try {
                 const urlRec = await getDrawingURL(meta.id);
                 if (urlRec) {
-                    useDrawingStore.getState().setResult({ previewUrl: urlRec.url });
+                    useDrawingStore.getState().setResult(getUrlForDrawingStore(file, urlRec.url));
                 } else {
                     const tmp = URL.createObjectURL(file);
-                    useDrawingStore.getState().setResult({ previewUrl: tmp });
+                    useDrawingStore.getState().setResult(getUrlForDrawingStore(file, tmp));
                 }
             } catch (_) {
                 const tmp = URL.createObjectURL(file);
-                useDrawingStore.getState().setResult({ previewUrl: tmp });
+                useDrawingStore.getState().setResult(getUrlForDrawingStore(file, tmp));
             }
 
             // 4. Update drawingStore (for AI/viewers)
-            try { useDrawingStore.getState().setResult({ previewUrl: URL.createObjectURL(file) }); } catch (_) { }
+            try {
+                const tmp = URL.createObjectURL(file);
+                useDrawingStore.getState().setResult(getUrlForDrawingStore(file, tmp));
+            } catch (_) { }
 
             // 5. Start CAD pipeline
             try {
                 const pipelineResult = await startCadPipeline(file);
                 const res = (pipelineResult as any).result ?? pipelineResult;
                 if (pipelineResult?.success) {
-                    // Use pipelineResult.result to populate drawingStore and trigger parametri calc
+                    // Use pipelineResult.result to populate drawingStore and trigger parametri calc.
                     try {
                         const vol = res?.volumeCm3 ?? res?.volume ?? null;
+                        const viewerUrl = (pipelineResult as any).viewerUrl ?? res?.viewerUrl ?? res?.url ?? null;
+                        const glbUrl = viewerUrl && /\.(gltf?|glb)$/i.test(viewerUrl) ? viewerUrl : null;
                         useDrawingStore.getState().setResult({
                             volumeCm3: vol ?? null,
-                            previewUrl: res?.viewerUrl ?? res?.url ?? null,
+                            viewerUrl,
+                            glbUrl,
+                            previewUrl: null,
                             surfaceCm2: res?.areaApproxCm2 ?? null,
                             boundingBox: res?.bbox ?? null,
                         });
-
+                        console.debug('STORE AFTER CAD', useDrawingStore.getState());
                         // Orchestration will react to drawingStore changes; do not call ricalcola() here.
                     } catch (_) {}
                 } else {

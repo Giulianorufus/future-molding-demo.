@@ -32,11 +32,13 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
 
   if (format === "stl") {
     try {
-      return await loadStlAndAnalyze(file);
+      const res = await loadStlAndAnalyze(file);
+      console.debug("CAD LOAD RESULT", res);
+      return res;
     } catch (e) {
       // Neutralized loader or runtime error — provide minimal fallback
       const url = URL.createObjectURL(file);
-      return {
+      const res = {
         format: "stl",
         volumeCm3: null,
         areaApproxCm2: null,
@@ -44,15 +46,19 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
         bbox: { x: 0, y: 0, z: 0 },
         viewerUrl: url,
       } as any;
+      console.debug("CAD LOAD RESULT (fallback stl)", res);
+      return res;
     }
   }
 
   if (format === "glb" || format === "gltf") {
     try {
-      return await loadGlbAndAnalyze(file);
+      const res = await loadGlbAndAnalyze(file);
+      console.debug("CAD LOAD RESULT", res);
+      return res;
     } catch (e) {
       const url = URL.createObjectURL(file);
-      return {
+      const res = {
         format: "glb",
         volumeCm3: null,
         areaApproxCm2: null,
@@ -60,6 +66,8 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
         bbox: { x: 0, y: 0, z: 0 },
         viewerUrl: url,
       } as any;
+      console.debug("CAD LOAD RESULT (fallback glb)", res);
+      return res;
     }
   }
 
@@ -69,10 +77,12 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
   if (format === "step" || format === "iges") {
     // Ora usiamo il loader OCCT + GLB
     try {
-      return await loadStepWithOcctAndAnalyze(file, format);
+      const res = await loadStepWithOcctAndAnalyze(file, format);
+      console.debug("CAD LOAD RESULT", res);
+      return res;
     } catch (e) {
       const url = URL.createObjectURL(file);
-      return {
+      const res = {
         format: format,
         volumeCm3: null,
         areaApproxCm2: null,
@@ -80,20 +90,24 @@ export async function loadCadModel(file: File): Promise<CadAnalysisResult> {
         bbox: { x: 0, y: 0, z: 0 },
         viewerUrl: url,
       } as any;
+      console.debug("CAD LOAD RESULT (fallback step)", res);
+      return res;
     }
   }
 
   // OBJ (per ora ancora senza analisi)
   if (format === "obj") {
     const url = URL.createObjectURL(file);
-    return {
+    const res = {
       format: "obj",
       volumeCm3: null,
       areaApproxCm2: null,
       thicknessAvgMm: null,
       bbox: { x: 0, y: 0, z: 0 },
       viewerUrl: url,
-    };
+    } as any;
+    console.debug("CAD LOAD RESULT (obj)", res);
+    return res;
   }
 
   throw new Error(`Formato non gestito internamente: ${format}`);

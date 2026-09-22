@@ -11,7 +11,7 @@ export default function DrawingPreview({ drawingId }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [type, setType] = useState<string>("");
 
-  const modelViewerUrl = useDrawingStore((s) => s.previewUrl ?? s.glbUrl);
+  const modelViewerUrl = useDrawingStore((s) => s.viewerUrl ?? s.previewUrl ?? s.glbUrl);
 
   useEffect(() => {
     let alive = true;

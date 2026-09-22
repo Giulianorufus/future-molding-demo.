@@ -1,6 +1,15 @@
 import { analyzeCADFile } from '@/lib/cadAnalysis';
 import { sanitizeFileName } from '@/utils/sanitizeFileName';
 import { useDrawingStore } from '@/stores/drawingStore';
+import { loadStepWithOcctAndAnalyze } from '@/cad/loaders/stepLoader';
+
+function getFileExtension(filename: string): string {
+  return filename.substring(filename.lastIndexOf('.')).toLowerCase();
+}
+
+function generateConversionId(): string {
+  return `conv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
 
 export async function startCadPipeline(file: File) {
   const drawing = useDrawingStore.getState();
@@ -11,9 +20,49 @@ export async function startCadPipeline(file: File) {
   }
 
   const safeName = sanitizeFileName(file.name || 'upload');
+  const ext = getFileExtension(file.name);
+  const isStepOrIges = ['.step', '.stp', '.iges', '.igs'].includes(ext);
 
   try {
-    // Try the comprehensive analysis (may use OCCT/WASM or built-in parser)
+    // For STEP/IGES files: start conversion in background, show placeholder
+    if (isStepOrIges) {
+      // Generate unique conversion ID for race condition protection
+      const conversionId = generateConversionId();
+      
+      // Set conversion status immediately (no await)
+      useDrawingStore.getState().setResult({
+        viewerUrl: null,
+        previewUrl: null,
+        glbUrl: null,
+        volumeCm3: null,
+        surfaceCm2: null,
+        boundingBox: null,
+        isLoading: false,
+        error: null,
+        conversionStatus: 'converting',
+        conversionMessage: 'Modello STEP caricato. Conversione GLB non ancora disponibile.',
+        conversionId,
+      });
+
+      // Kick off conversion in background (no await to avoid UI block)
+      loadStepWithOcctAndAnalyze(file, conversionId).catch((err) => {
+        console.warn('STEP/IGES conversion failed:', err);
+        // Only update error if this conversion is still current
+        const currentState = useDrawingStore.getState();
+        if (currentState.conversionId === conversionId) {
+          useDrawingStore.getState().setResult({
+            conversionStatus: 'error',
+            conversionMessage: `Conversione fallita: ${err?.message ?? String(err)}`,
+            isLoading: false,
+          });
+        }
+      });
+
+      console.debug('CAD LOAD (STEP/IGES)', { file: file.name, status: 'converting', conversionId });
+      return { success: true, result: null, viewerUrl: null, isConverting: true };
+    }
+
+    // For other formats (GLB, STL): use standard analysis
     const result = await analyzeCADFile(file, (st) => {
       // Optional progress can be used later to update UI
     });
@@ -31,7 +80,7 @@ export async function startCadPipeline(file: File) {
       thicknessAvg = null;
     }
 
-    // Create a preview URL for the uploaded file as fallback viewerUrl
+    // Create a preview URL for the uploaded file as fallback viewerUrl (only for non-STEP files)
     let viewerUrl: string | null = null;
     try {
       viewerUrl = URL.createObjectURL(file);
@@ -40,7 +89,9 @@ export async function startCadPipeline(file: File) {
     }
 
     useDrawingStore.getState().setResult({
-      previewUrl: viewerUrl,
+      viewerUrl: viewerUrl,
+      previewUrl: null,
+      glbUrl: null,
       volumeCm3: (result as any).volume ?? null,
       surfaceCm2: (result as any).projectedArea_cm2 ?? (result as any).surface_area ?? null,
       boundingBox: (result as any).bbox ?? null,
@@ -55,12 +106,17 @@ export async function startCadPipeline(file: File) {
         : null,
       isLoading: false,
       error: null,
+      conversionStatus: 'ready',
+      conversionMessage: undefined,
     });
 
-    return { success: true, result };
+    console.debug('CAD LOAD RESULT', { file: file.name, viewerUrl, volumeCm3: (result as any).volume ?? null, surfaceCm2: (result as any).projectedArea_cm2 ?? (result as any).surface_area ?? null });
+    console.debug('STORE AFTER CAD', useDrawingStore.getState());
+
+    return { success: true, result, viewerUrl };
   } catch (err: any) {
     const msg = String(err?.message ?? err ?? 'Unknown analysis error');
-    try { useDrawingStore.getState().setResult({ error: msg, isLoading: false }); } catch (_) {}
+    try { useDrawingStore.getState().setResult({ error: msg, isLoading: false, conversionStatus: 'error' }); } catch (_) {}
     return { success: false, error: msg };
   }
 }

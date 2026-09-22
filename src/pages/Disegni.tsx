@@ -15,8 +15,9 @@ function pushToDrawingStore(d: AnyDrawing | null | undefined) {
   const ds: any = useDrawingStore.getState?.() ?? null;
   if (!ds) return;
 
-  const glbUrl = d.glbUrl ?? d.modelUrl ?? d.viewerUrl ?? d.previewUrl ?? null;
-  const previewUrl = d.previewUrl ?? d.viewerUrl ?? glbUrl ?? null;
+  const viewerUrl = d.viewerUrl ?? d.glbUrl ?? d.modelUrl ?? null;
+  const previewUrl = d.previewUrl ?? null;
+  const glbUrl = d.glbUrl ?? null;
 
   const volumeCm3 =
     typeof d.volumeCm3 === "number"
@@ -37,6 +38,7 @@ function pushToDrawingStore(d: AnyDrawing | null | undefined) {
   if (typeof ds.setResult === "function") {
     ds.setResult({
       ...d,
+      viewerUrl,
       glbUrl,
       previewUrl,
       volumeCm3,
@@ -44,9 +46,9 @@ function pushToDrawingStore(d: AnyDrawing | null | undefined) {
       boundingBox,
     });
   } else {
+    if (typeof ds.setViewerUrl === "function") ds.setViewerUrl(viewerUrl);
     if (typeof ds.setGlbUrl === "function") ds.setGlbUrl(glbUrl);
-    if (typeof ds.setModelUrl === "function") ds.setModelUrl(glbUrl);
-    if (typeof ds.setViewerUrl === "function") ds.setViewerUrl(previewUrl);
+    if (typeof ds.setModelUrl === "function") ds.setModelUrl(viewerUrl);
     if (typeof ds.setPreviewUrl === "function") ds.setPreviewUrl(previewUrl);
     if (typeof ds.setVolumeCm3 === "function" && typeof volumeCm3 === "number") ds.setVolumeCm3(volumeCm3);
     if (typeof ds.setAreaCm2 === "function" && typeof areaCm2 === "number") ds.setAreaCm2(areaCm2);

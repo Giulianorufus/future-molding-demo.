@@ -152,24 +152,79 @@ function probeReadResult(occt: OcctModule, data: Uint8Array, isIges: boolean): a
   return null;
 }
 
-export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "iges"): Promise<CadAnalysisResult> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new Error('Conversione STEP→GLB superata il timeout (60s)')), timeoutMs);
+  });
+  
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutHandle));
+}
+
+export async function loadStepWithOcctAndAnalyze(file: File, conversionId?: string, format?: "step" | "iges"): Promise<CadAnalysisResult> {
   const fmt = format ?? (file.name.split(".").pop()?.toLowerCase() === "iges" || file.name.split(".").pop()?.toLowerCase() === "igs" ? "iges" : "step");
   const drawing = useDrawingStore.getState();
 
-  drawing.setResult({ isLoading: true });
+  // Check if this conversion is still current before starting
+  if (conversionId && drawing.conversionId !== conversionId) {
+    console.debug('Conversion ID mismatch, skipping outdated conversion', { expected: drawing.conversionId, received: conversionId });
+    throw new Error('Conversione annullata: nuovo file caricato');
+  }
+
+  drawing.setResult({ isLoading: true, conversionStatus: 'converting' });
+  
+  // Wrap the entire conversion in a 60-second timeout
+  try {
+    return await withTimeout(performStepConversion(file, fmt, conversionId), 60000);
+  } catch (err: any) {
+    console.warn("STEP/IGES conversion timeout or error:", err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    
+    // Only update if still current
+    const currentState = useDrawingStore.getState();
+    if (!conversionId || currentState.conversionId === conversionId) {
+      drawing.setResult({ 
+        viewerUrl: null, 
+        glbUrl: null, 
+        volumeCm3: null, 
+        surfaceCm2: null, 
+        previewUrl: null, 
+        error: errMsg, 
+        isLoading: false, 
+        conversionStatus: 'error', 
+        conversionMessage: `Errore conversione: ${errMsg}` 
+      });
+    }
+    return fallbackResult(file, fmt);
+  }
+}
+
+async function performStepConversion(file: File, fmt: "step" | "iges", conversionId?: string): Promise<CadAnalysisResult> {
+  const drawing = useDrawingStore.getState();
+
+  // Guard check: ensure we're still the current conversion
+  function isStillCurrent(): boolean {
+    const current = useDrawingStore.getState();
+    return !conversionId || current.conversionId === conversionId;
+  }
   try {
     const occt = await loadOcctModule();
     if (!occt) {
       const fb = fallbackResult(file, fmt);
-      drawing.setResult({
-        glbUrl: fb.viewerUrl,
-        volumeCm3: null,
-        surfaceCm2: null,
-        boundingBox: fb.bbox,
-        previewUrl: fb.viewerUrl,
-        error: null,
-        isLoading: false,
-      });
+      if (isStillCurrent()) {
+        drawing.setResult({
+          viewerUrl: fb.viewerUrl,
+          glbUrl: fb.viewerUrl,
+          volumeCm3: null,
+          surfaceCm2: null,
+          boundingBox: fb.bbox,
+          previewUrl: null,
+          error: null,
+          isLoading: false,
+          conversionStatus: 'ready',
+          conversionMessage: undefined,
+        });
+      }
       return fb;
     }
 
@@ -179,30 +234,40 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
     const result = probeReadResult(occt, uint8, fmt === "iges");
     if (!result) {
       const fb = fallbackResult(file, fmt);
-      drawing.setResult({
-        glbUrl: fb.viewerUrl,
-        volumeCm3: null,
-        surfaceCm2: null,
-        boundingBox: fb.bbox,
-        previewUrl: fb.viewerUrl,
-        error: null,
-        isLoading: false,
-      });
+      if (isStillCurrent()) {
+        drawing.setResult({
+          viewerUrl: fb.viewerUrl,
+          glbUrl: fb.viewerUrl,
+          volumeCm3: null,
+          surfaceCm2: null,
+          boundingBox: fb.bbox,
+          previewUrl: null,
+          error: null,
+          isLoading: false,
+          conversionStatus: 'ready',
+          conversionMessage: undefined,
+        });
+      }
       return fb;
     }
 
     const meshes: any[] = Array.isArray(result.meshes) && result.meshes.length ? result.meshes : Array.isArray(result) && result.length ? result : [];
     if (!meshes.length) {
       const fb = fallbackResult(file, fmt);
-      drawing.setResult({
-        glbUrl: fb.viewerUrl,
-        volumeCm3: null,
-        surfaceCm2: null,
-        boundingBox: fb.bbox,
-        previewUrl: fb.viewerUrl,
-        error: null,
-        isLoading: false,
-      });
+      if (isStillCurrent()) {
+        drawing.setResult({
+          viewerUrl: fb.viewerUrl,
+          glbUrl: fb.viewerUrl,
+          volumeCm3: null,
+          surfaceCm2: null,
+          boundingBox: fb.bbox,
+          previewUrl: null,
+          error: null,
+          isLoading: false,
+          conversionStatus: 'ready',
+          conversionMessage: undefined,
+        });
+      }
       return fb;
     }
 
@@ -244,15 +309,18 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
       viewerUrl = await exportGeometryToGlbUrl(geometry);
     } catch (err) {
       const fb = fallbackResult(file, fmt);
-      drawing.setResult({
-        glbUrl: fb.viewerUrl,
-        volumeCm3: null,
-        surfaceCm2: null,
-        boundingBox: fb.bbox,
-        previewUrl: fb.viewerUrl,
-        error: null,
-        isLoading: false,
-      });
+      if (isStillCurrent()) {
+        drawing.setResult({
+          viewerUrl: fb.viewerUrl,
+          glbUrl: fb.viewerUrl,
+          volumeCm3: null,
+          surfaceCm2: null,
+          boundingBox: fb.bbox,
+          previewUrl: null,
+          error: null,
+          isLoading: false,
+        });
+      }
       return fb;
     }
 
@@ -264,18 +332,22 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
       volumeCm3: volume ?? 0,
       surfaceCm2: areaApprox,
       boundingBox: { x: size.x, y: size.y, z: size.z },
-      previewUrl: viewerUrl,
     };
 
-    drawing.setResult({
-      glbUrl: viewerUrl,
-      volumeCm3: geo.volumeCm3,
-      surfaceCm2: geo.surfaceCm2,
-      boundingBox: geo.boundingBox,
-      previewUrl: viewerUrl,
-      error: null,
-      isLoading: false,
-    });
+    // Only update store if this conversion is still current
+    if (isStillCurrent()) {
+      drawing.setResult({
+          viewerUrl: viewerUrl,
+          glbUrl: viewerUrl,
+          volumeCm3: geo.volumeCm3,
+          surfaceCm2: geo.surfaceCm2,
+          boundingBox: geo.boundingBox,
+          previewUrl: null,
+        isLoading: false,
+        conversionStatus: 'ready',
+        conversionMessage: undefined,
+      });
+    }
 
     return {
       format: fmt,
@@ -287,10 +359,13 @@ export async function loadStepWithOcctAndAnalyze(file: File, format?: "step" | "
     };
     } catch (err) {
       console.warn("STEP/IGES loader error, using fallback:", err);
-      drawing.setResult({ glbUrl: null, volumeCm3: null, surfaceCm2: null, previewUrl: null, error: err instanceof Error ? err.message : String(err), isLoading: false });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (isStillCurrent()) {
+        drawing.setResult({ viewerUrl: null, glbUrl: null, volumeCm3: null, surfaceCm2: null, previewUrl: null, error: errMsg, isLoading: false, conversionStatus: 'error', conversionMessage: `Errore conversione: ${errMsg}` });
+      }
       return fallbackResult(file, fmt);
     } finally {
-      drawing.setResult({ isLoading: false });
+      // Do not override conv status here - let previous setResult stand
     }
 }
 

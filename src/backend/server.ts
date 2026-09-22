@@ -10,7 +10,10 @@ let userRoutes: any = undefined;
 let aiRoutes: any = undefined;
 let paramsRoutes: any = undefined;
 let calcAutoRoutes: any = undefined;
+let knowledgeRoutes: any = undefined;
 import { authMiddleware } from "./auth";
+import { createKnowledgeRepository } from "./services/knowledgeRepositoryFactory";
+import { createKnowledgeService } from "./services/knowledgeService";
 
 // Lazy-load route modules so tests can import `app` without transforming all deps (node-fetch ESM)
 if (!process.env.DISABLE_BACKEND_ROUTES) {
@@ -25,6 +28,8 @@ if (!process.env.DISABLE_BACKEND_ROUTES) {
     paramsRoutes = require('./routes/paramsRoutes').default;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     calcAutoRoutes = require('./routes/calcAutoRoutes').default;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    knowledgeRoutes = require('./routes/knowledgeRoutes').createKnowledgeRoutes;
   } catch (e) {
     // in test environments some dependencies (ESM-only) may fail to load; skip registering those routes
   }
@@ -113,6 +118,11 @@ if (userRoutes) app.use("/api/user", userRoutes);
 if (aiRoutes) app.use("/api/ai", aiLimiter, aiRoutes);
 if (paramsRoutes) app.use("/api/params", paramsRoutes);
 if (calcAutoRoutes) app.use("/api/calc", calcAutoRoutes);
+if (knowledgeRoutes) {
+  const repository = createKnowledgeRepository()
+  const service = createKnowledgeService(repository)
+  app.use("/api/knowledge", knowledgeRoutes(service))
+}
 
 // Dev-only telemetry endpoint for debug in non-production or when explicitly enabled
 const devEnabled = process.env.NODE_ENV !== "production" || process.env.ENABLE_DEV_ENDPOINTS === "1";

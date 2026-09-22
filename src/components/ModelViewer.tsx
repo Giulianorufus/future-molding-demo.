@@ -4,7 +4,7 @@ import { useDrawingStore } from "../stores/drawingStore";
 
 // DEPRECATED — replaced by ThreeViewer.tsx
 export default function DeprecatedViewer() {
-  const viewerUrl = useDrawingStore((s) => s.previewUrl ?? s.glbUrl);
+  const viewerUrl = useDrawingStore((s) => s.viewerUrl);
   const file = null; // file object removed from new drawingStore
   const containerRef = useRef<HTMLDivElement | null>(null);
 

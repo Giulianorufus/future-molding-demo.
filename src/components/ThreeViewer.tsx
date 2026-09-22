@@ -3,7 +3,6 @@ import * as THREE from "three";
 type DefectPin = { id: string; x?: number; y?: number; defect?: string; severity?: number }
 
 export type ThreeViewerProps = {
-  glbUrl?: string | null;
   viewerUrl?: string | null;
   pins?: DefectPin[];
   selectedPinId?: string | null;
@@ -11,10 +10,10 @@ export type ThreeViewerProps = {
   onSelectPin?: (id: string | null) => void;
 };
 
-export const ThreeViewer: React.FC<ThreeViewerProps> = ({ glbUrl, viewerUrl, pins, selectedPinId, selectedPin, onSelectPin }) => {
+export const ThreeViewer: React.FC<ThreeViewerProps> = ({ viewerUrl, pins, selectedPinId, selectedPin, onSelectPin }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<string>("Idle");
-  const effectiveUrl = glbUrl ?? viewerUrl ?? null;
+  const effectiveUrl = viewerUrl ?? null;
 
   useEffect(() => {
     if (!containerRef.current) return;

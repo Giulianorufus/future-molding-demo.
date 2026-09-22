@@ -1,9 +1,11 @@
-﻿import React, { useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useParametriStore } from "../stores/parametriStore";
 import { useDefectsStore } from "../stores/defectsStore";
 import ThreeViewer from "../components/ThreeViewer";
 import { DEFECT_PINS } from "../data/defectPins";
+import { inferKnowledgeRecommendations } from "../engine/knowledge/knowledgeEngine";
+import type { KnowledgeResult } from "../engine/knowledge/types";
 
 // Lista difetti mostrata nella sidebar
 const DEFECTS = [
@@ -23,12 +25,51 @@ export default function DifettiPage() {
   const setSelectedDefectIdStore = useDefectsStore((s) => s.setSelectedDefectId)
 
   // Dati dal disegno (read-only)
-  const glbUrl = useDrawingStore((s) => s.glbUrl);
+  const viewerUrl = useDrawingStore((s) => s.viewerUrl);
+  const conversionStatus = useDrawingStore((s) => s.conversionStatus);
+  const conversionMessage = useDrawingStore((s) => s.conversionMessage);
+  const drawingAnalysis = useDrawingStore((s) => ({ volumeCm3: s.volumeCm3, boundingBox: s.boundingBox, previewUrl: s.previewUrl, glbUrl: s.glbUrl }));
+  console.debug('MODEL IN DIFETTI', { viewerUrl, previewUrl: drawingAnalysis.previewUrl, glbUrl: drawingAnalysis.glbUrl, cadAnalysis: { volumeCm3: drawingAnalysis.volumeCm3, bbox: drawingAnalysis.boundingBox }, conversionStatus, conversionMessage });
 
   // Parametri calcolati (read-only)
   const result = useParametriStore((s) => s.result);
   const loading = useParametriStore((s) => s.loading);
   const error = useParametriStore((s) => s.error);
+  const lastDefectFix = useParametriStore((s) => s.lastDefectFix);
+  const [knowledgeResult, setKnowledgeResult] = useState<KnowledgeResult | null>(null);
+
+  useEffect(() => {
+    if (!selectedDefectId || !result) {
+      setKnowledgeResult(null);
+      return;
+    }
+
+    let cancelled = false;
+    void inferKnowledgeRecommendations({
+      input: {
+        volumeCm3: drawingAnalysis.volumeCm3,
+        projectedAreaCm2: null,
+        defectId: selectedDefectId,
+        severity: selectedSeverity,
+        processParameters: {
+          pressureBar: result.pressureBar,
+          velocityMmPerS: result.velocityMmPerS,
+          switchoverMs: result.switchoverMs,
+        },
+      },
+      output: {
+        calculatedAtISO: new Date().toISOString(),
+        rawResult: result as unknown as Record<string, unknown>,
+      },
+      defectContext: { defectId: selectedDefectId, severity: selectedSeverity },
+    }).then((next) => {
+      if (!cancelled) setKnowledgeResult(next);
+    }).catch(() => {
+      if (!cancelled) setKnowledgeResult(null);
+    });
+
+    return () => { cancelled = true };
+  }, [drawingAnalysis.boundingBox, drawingAnalysis.volumeCm3, result, selectedDefectId, selectedSeverity]);
 
   // Normalizza gli id (defectPins usa underscore nella mappa)
   const normalizedId = selectedDefectId ? selectedDefectId.replace(/-/g, "_") : null;
@@ -76,9 +117,19 @@ export default function DifettiPage() {
       </div>
 
       {/* Viewer 3D */}
-      <div className="flex-1 p-4">
-        {glbUrl ? (
-          <ThreeViewer glbUrl={glbUrl} viewerUrl={glbUrl} selectedPin={selectedPin} />
+      <div className="flex-1 p-4 flex items-center justify-center">
+        {viewerUrl ? (
+          <ThreeViewer viewerUrl={viewerUrl} selectedPin={selectedPin} />
+        ) : conversionStatus === 'converting' ? (
+          <div className="text-center bg-blue-50 border border-blue-300 rounded-lg p-6">
+            <div className="mb-3 text-blue-600 font-semibold">⏳ Conversione in corso...</div>
+            <div className="text-blue-700 text-sm">{conversionMessage || 'Conversione GLB non ancora disponibile.'}</div>
+          </div>
+        ) : conversionStatus === 'error' ? (
+          <div className="text-center bg-red-50 border border-red-300 rounded-lg p-6">
+            <div className="mb-3 text-red-600 font-semibold">❌ Errore</div>
+            <div className="text-red-700 text-sm">{conversionMessage || 'Errore durante la conversione del modello.'}</div>
+          </div>
         ) : (
           <div className="text-gray-500">Carica un disegno per visualizzare il modello.</div>
         )}
@@ -89,13 +140,13 @@ export default function DifettiPage() {
         <h2 className="font-bold text-lg mb-3">Parametri</h2>
 
         {/* visualizza ultima correzione applicata */}
-        {useParametriStore((s) => s.lastDefectFix) && (
+        {lastDefectFix && (
           <div className="mt-2 mb-3 rounded-md border border-slate-700 bg-slate-950 p-3">
             <div className="text-xs text-slate-300">
-              Correzione: <span className="font-semibold">{useParametriStore((s) => s.lastDefectFix?.defectId)}</span> / {useParametriStore((s) => s.lastDefectFix?.severity)}
+              Correzione: <span className="font-semibold">{lastDefectFix.defectId}</span> / {lastDefectFix.severity}
             </div>
             <ul className="mt-2 list-disc pl-5 text-xs text-slate-200">
-              {useParametriStore((s) => s.lastDefectFix?.notes ?? []).map((n, i) => (
+              {lastDefectFix.notes.map((n, i) => (
                 <li key={i}>{n}</li>
               ))}
             </ul>
@@ -134,6 +185,14 @@ export default function DifettiPage() {
               <br />
               Richiesto: {result.tonnellaggioRequired ?? "--"} kN
             </div>
+          </div>
+        )}
+
+        {knowledgeResult && (knowledgeResult.diagnosis.length > 0 || knowledgeResult.recommendations.length > 0) && (
+          <div className="mt-4 border-t border-gray-200 pt-3 text-sm">
+            <strong>Diagnosi</strong>
+            {knowledgeResult.diagnosis.map((item) => <div key={item.id} className="mt-1">{item.title}</div>)}
+            {knowledgeResult.recommendations.map((item) => <div key={item.id} className="mt-1 text-gray-700">{item.reason}</div>)}
           </div>
         )}
 

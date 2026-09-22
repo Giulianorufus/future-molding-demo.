@@ -374,6 +374,7 @@ if (typeof window !== 'undefined') {
               id: p.selectedPressId,
               tonnellaggio: pressEntry.tonnellaggio,
               screwDiameters: pressEntry.screwDiameters || [],
+              screwDiameterMm: p.selectedScrewDiameter_mm ?? undefined,
               maxPressureBar: pressEntry.maxPressureBar,
               maxSpeedMmPerS: pressEntry.maxSpeedMmPerS,
             }
@@ -508,6 +509,12 @@ if (typeof window !== 'undefined') {
       if (timer) clearTimeout(timer)
       timer = setTimeout(async () => {
         timer = null
+        const drawing = useDrawingStore.getState()
+        const press = usePressStore.getState()
+        const material = useMaterialStore.getState()
+        if (drawing.conversionStatus === 'converting' || drawing.conversionStatus === 'error') return
+        if (!(typeof drawing.volumeCm3 === 'number' && drawing.volumeCm3 > 0)) return
+        if (!press.selectedPressId || !material.selectedMaterialId) return
         const input = buildInputFromStores()
         const current = useParametriStore.getState().lastInput
         if (inputsEqual(current, input)) return

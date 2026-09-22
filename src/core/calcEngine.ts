@@ -5,6 +5,7 @@ export type CalculationInput = {
     id: string
     tonnellaggio: number
     screwDiameters: number[]
+    screwDiameterMm?: number
     maxPressureBar: number
     maxSpeedMmPerS: number
   } | null
@@ -70,7 +71,7 @@ export function calcolaParametri(input: CalculationInput, context?: CalcContext)
   const { volumeCm3, press, material, shotVolumeCm3 } = input
   const ton = calcolaTonnellaggio(volumeCm3, material?.densityGPerCm3)
   const pressure = calcolaPressione(volumeCm3, shotVolumeCm3)
-  const screw = press?.screwDiameters?.[0] ?? 20
+  const screw = press?.screwDiameterMm ?? press?.screwDiameters?.[0] ?? 20
   const velocity = calcolaVelocità(press?.maxSpeedMmPerS)
   const sw = calcolaSwitchover(volumeCm3)
   const times = calcolaTempi(volumeCm3)

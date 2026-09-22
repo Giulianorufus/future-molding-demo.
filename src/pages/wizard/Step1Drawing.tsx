@@ -1,6 +1,7 @@
 import React from 'react'
 import { useDrawingStore } from '@/stores/drawingStore'
 import { useDrawingUpload } from '@/hooks/useDrawingUpload'
+import ThreeViewer from '@/components/ThreeViewer'
 
 export default function Step1Drawing({ onNext }: { onNext?: () => void }) {
   const { handleUpload, isUploading } = useDrawingUpload()
@@ -8,6 +9,9 @@ export default function Step1Drawing({ onNext }: { onNext?: () => void }) {
   const surfaceCm2 = useDrawingStore((s) => s.surfaceCm2)
   const boundingBox = useDrawingStore((s) => s.boundingBox)
   const previewUrl = useDrawingStore((s) => s.previewUrl)
+  const viewerUrl = useDrawingStore((s) => s.viewerUrl ?? s.glbUrl)
+  const conversionStatus = useDrawingStore((s) => s.conversionStatus)
+  const conversionMessage = useDrawingStore((s) => s.conversionMessage)
   const isLoading = useDrawingStore((s) => s.isLoading)
 
   const canNext = typeof volumeCm3 === 'number' && volumeCm3 > 0
@@ -46,15 +50,16 @@ export default function Step1Drawing({ onNext }: { onNext?: () => void }) {
 
       <div>
         <div className="text-sm text-blue-800 font-medium mb-2">Anteprima</div>
-        {previewUrl ? (
+        {viewerUrl ? (
+          <ThreeViewer viewerUrl={viewerUrl} />
+        ) : previewUrl ? (
           <div className="w-full h-60 bg-gray-100 border rounded flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-sm text-gray-700 mb-2">Anteprima 3D</div>
-              <a className="text-blue-700 underline" href={previewUrl} target="_blank" rel="noreferrer">Apri anteprima in nuova scheda</a>
-            </div>
+            <img src={previewUrl} alt="Anteprima disegno" className="max-w-full max-h-full object-contain" />
           </div>
+        ) : conversionStatus === 'converting' || isLoading ? (
+          <div className="text-sm text-gray-500">Conversione 3D in corso…</div>
         ) : (
-          <div className="text-sm text-gray-500">Nessuna anteprima disponibile</div>
+          <div className="text-sm text-gray-500">{conversionMessage ?? 'Nessuna anteprima disponibile'}</div>
         )}
       </div>
 

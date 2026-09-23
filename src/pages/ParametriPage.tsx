@@ -1,5 +1,6 @@
 import { useParametriStore } from "../stores/parametriStore";
 import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
+import OperatorRecipePanel from "../components/OperatorRecipePanel";
 import SimilarCasesPanel from "../components/SimilarCasesPanel";
 import ExportRecipeButton from "../components/ExportRecipeButton";
 import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
@@ -135,13 +136,16 @@ export default function ParametriPage() {
 
       {/* Risultato */}
       {result && (
+        <OperatorRecipePanel result={result} />
+      )}
+      {result && (
         <div className="bg-white p-6 shadow rounded max-w-3xl">
           <table className="w-full text-lg">
             <tbody>
               <tr className="border-b">
                 <td className="py-3 font-semibold">Tonnellaggio richiesto</td>
                 <td className="py-3 text-right">
-                  {result.tonnellaggioRequired} kN
+                  {result.tonnellaggioRequired} t
                 </td>
               </tr>
 
@@ -160,9 +164,9 @@ export default function ParametriPage() {
               </tr>
 
               <tr className="border-b">
-                <td className="py-3 font-semibold">Velocità (vite)</td>
+                <td className="py-3 font-semibold">Portata iniezione</td>
                 <td className="py-3 text-right">
-                  {result.velocityMmPerS} mm/s
+                  {result.velocityMmPerS} cm³/s
                 </td>
               </tr>
 

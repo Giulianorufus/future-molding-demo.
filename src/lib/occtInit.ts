@@ -63,12 +63,12 @@ export async function getOcct() {
   // locateFile: prefer bundled public/vendor/occt in browser; in Node/tests try project-relative public path or C:\vendor\occt
   const locateFile = (p: string) => {
     try {
-      // Node / test environment
-      if (typeof window === 'undefined') {
+      // Jest espone window anche in Node: scegliere il percorso dal runtime.
+      if (typeof process !== 'undefined' && process.versions?.node) {
         const pathMod = require('path');
         const fs = require('fs');
         const candidate = pathMod.join(process.cwd(), 'public', 'vendor', 'occt', p);
-        if (fs.existsSync(candidate)) return 'file://' + candidate.replace(/\\/g, '/');
+        if (fs.existsSync(candidate)) return candidate;
         const alt = pathMod.join('C:', 'vendor', 'occt', p);
         if (fs.existsSync(alt)) return alt;
         // fallback to absolute-like URL used in browser

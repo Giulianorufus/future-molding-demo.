@@ -20,10 +20,12 @@ describe("gate freeze CLI", () => {
     expect(fs.existsSync(outJson)).toBe(true);
     expect(fs.existsSync(outCsv)).toBe(true);
 
-    const obj = JSON.parse(fs.readFileSync(outJson, "utf8"));
+    const obj = JSON.parse(fs.readFileSync(outJson, "utf8")) as {
+      recommendations: Array<{ groupKey: string; method: string; recommendedHoldingTime_s: number }>;
+    };
     expect(obj.recommendations.length).toBeGreaterThanOrEqual(2);
 
-    const abs = obj.recommendations.find((r: any) => r.groupKey === "fp-ABS");
+    const abs = obj.recommendations.find((recommendation) => recommendation.groupKey === "fp-ABS");
     expect(abs).toBeTruthy();
     expect(abs.method).toBe("weight_plateau");
     expect(abs.recommendedHoldingTime_s).toBeGreaterThan(0);

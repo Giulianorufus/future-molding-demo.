@@ -1,10 +1,12 @@
 import { buildExportRecipeSnapshot } from './ExportRecipeButton'
+import { useDrawingStore } from '../stores/drawingStore'
 
 test('exports the canonical wizard selections and calculation result', () => {
   const snapshot = buildExportRecipeSnapshot({
     input: { volumeCm3: 4.326812, shotVolumeCm3: 19.31 },
     output: { pressureBar: 15, screwDiameterMm: 22, shotVolumeCm3: 19.307248 },
     drawing: {
+      ...useDrawingStore.getState(),
       volumeCm3: 4.326812,
       surfaceCm2: 7.04,
       boundingBox: { x: 17.6, y: 40, z: 27.9 },
@@ -13,7 +15,7 @@ test('exports the canonical wizard selections and calculation result', () => {
       runnerVolumeCm3: 2,
       runnerProjectedAreaCm2: 1,
       conversionId: 'step-frutto',
-    } as any,
+    },
     press: {
       id: 'arburg-370-u', name: 'Arburg 370 U', tonnellaggio: 600,
       shotVolumeCm3: 50, maxPressureBar: 2000, maxSpeedMmPerS: 250,

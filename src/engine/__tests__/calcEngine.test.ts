@@ -1,8 +1,13 @@
-import { calculateParameters, calcolaParametri } from '../calcEngine';
+import { calculateParameters } from '../calcEngine';
+import { calcolaParametri as calculateWizard } from '../../core/calcEngine';
 import { useDrawingStore } from '../../stores/drawingStore';
+import type { MaterialInfo } from '../materialData';
+import type { PressProfile } from '../pressProfiles';
 
 describe('calculateParameters basic scenarios', () => {
-  const dummyMaterial: any = {
+  const dummyMaterial: MaterialInfo = {
+    id: 'abs',
+    name: 'ABS',
     meltMin: 200,
     meltMax: 250,
     crystalline: false,
@@ -12,10 +17,14 @@ describe('calculateParameters basic scenarios', () => {
     family: 'ABS'
   };
 
-  const dummyPress: any = {
+  const dummyPress: PressProfile = {
+    id: 'sample-press',
+    brand: 'arburg',
+    label: 'Pressa di prova',
+    screwDiameters: [22, 25],
     clampForceTon: 200,
     maxSpeedCm3s: 200,
-    maxInjectionPressure_bar: 1000,
+    maxPressureBar: 1000,
     shotVolumeCm3: 1000,
   };
 
@@ -67,12 +76,17 @@ describe('calculateParameters basic scenarios', () => {
       });
       expect(out.shotVolumeCm3).toBe(19.307248);
       expect(out.totalPartsVolumeCm3).toBeCloseTo(17.307248130067076, 12);
-      const wizardOutput = calcolaParametri({
+      const wizardOutput = calculateWizard({
+        volumeCm3: 4.326812032516769,
+        projectedAreaCm2: 7.04,
+        press: {
+          id: 'arburg-370-u', tonnellaggio: 600 / 9.80665,
+          screwDiameters: [22], screwDiameterMm: 22,
+          maxPressureBar: 2000, maxSpeedMmPerS: 250,
+        },
         material: { id: 'PP-HOMO' },
-        machine: { id: 'arburg-370-u', tonnellaggio_kN: 600, screwDiameter_mm: 22 },
-        geometry: { volumePezzo_cm3: 4.326812032516769, areaProiettata_cm2: 7.04 },
-      } as any);
-      expect((wizardOutput as any).shotVolumeCm3).toBe(19.307248);
+      });
+      expect(wizardOutput.shotVolumeCm3).toBe(19.307248);
     } finally {
       useDrawingStore.getState().reset();
     }

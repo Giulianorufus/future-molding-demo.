@@ -85,6 +85,7 @@ export interface TemperatureOutput {
 
 export interface CalcOutput {
   // Geometria
+  shotVolumeCm3: number;
   volumePezzo: number;
   volumeMaterozza: number;
   volumeTotale: number;

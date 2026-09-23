@@ -30,7 +30,15 @@ async function loadOcctModule(): Promise<OcctModule | null> {
       factory = (mod as any).default ?? mod;
     }
 
-    const occt: any = await factory();
+    const occt: any = await factory(
+      typeof window === "undefined"
+        ? undefined
+        : {
+            // occt-import-js is Emscripten-based. Point its runtime explicitly at
+            // the artifacts copied by postinstall into Vite's public directory.
+            locateFile: (fileName: string) => `/vendor/occt/${fileName}`,
+          }
+    );
     if (!occt) {
       occtCache = null;
       return null;
@@ -90,10 +98,9 @@ async function exportGeometryToGlbUrl(geometry: THREE.BufferGeometry): Promise<s
   const mesh = new THREE.Mesh(geometry, material);
   scene.add(mesh);
 
-  // Dynamically load GLTFExporter
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const expMod = require("three/examples/jsm/exporters/GLTFExporter");
-  const GLTFExporter = expMod?.GLTFExporter ?? expMod?.default ?? expMod;
+  // Load the ESM exporter in the browser. Using require() here can fail under Vite.
+  const expMod: any = await import("three/examples/jsm/exporters/GLTFExporter");
+  const GLTFExporter = expMod?.GLTFExporter ?? expMod?.default;
   if (!GLTFExporter) throw new Error("GLTFExporter non disponibile");
 
   const exporter = new GLTFExporter();
@@ -113,15 +120,15 @@ async function exportGeometryToGlbUrl(geometry: THREE.BufferGeometry): Promise<s
   return URL.createObjectURL(blob);
 }
 
-function fallbackResult(file: File, format: "step" | "iges"): CadAnalysisResult {
-  const url = URL.createObjectURL(file);
+function fallbackResult(_file: File, format: "step" | "iges"): CadAnalysisResult {
+  // A raw STEP/IGES blob is not a valid GLB and must never be handed to GLTFLoader.
   return {
     format,
     volumeCm3: null,
     areaApproxCm2: null,
     thicknessAvgMm: null,
     bbox: { x: 0, y: 0, z: 0 },
-    viewerUrl: url,
+    viewerUrl: "",
   };
 }
 
@@ -213,16 +220,16 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
           previewUrl: null,
-          error: null,
+          error: "OCCT non ha prodotto una geometria visualizzabile.",
           isLoading: false,
-          conversionStatus: 'ready',
-          conversionMessage: undefined,
+          conversionStatus: 'error',
+          conversionMessage: "Conversione STEP/IGES non riuscita.",
         });
       }
       return fb;
@@ -236,8 +243,8 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
@@ -256,8 +263,8 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
@@ -302,7 +309,9 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       }
     }
 
-    const areaApprox = size.x * size.y;
+    // OCCT coordinates are millimetres. XY projection is mm²; convert to cm².
+    // This is a bounding-box projection estimate, not an exact silhouette projection.
+    const areaApprox = (size.x * size.y) / 100;
 
     let viewerUrl: string;
     try {
@@ -311,8 +320,8 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
       const fb = fallbackResult(file, fmt);
       if (isStillCurrent()) {
         drawing.setResult({
-          viewerUrl: fb.viewerUrl,
-          glbUrl: fb.viewerUrl,
+          viewerUrl: null,
+          glbUrl: null,
           volumeCm3: null,
           surfaceCm2: null,
           boundingBox: fb.bbox,
@@ -326,6 +335,14 @@ async function performStepConversion(file: File, fmt: "step" | "iges", conversio
 
     if (!volume || (volume ?? 0) <= 0) {
       throw new Error("Geometria non valida: volume pezzo mancante o nullo.");
+    }
+
+    // Physical sanity check: a closed part cannot have a volume larger than its
+    // own bounding box. Reject impossible triangulated-volume results instead
+    // of feeding them to molding calculations.
+    const bboxVolumeCm3 = (size.x * size.y * size.z) / 1000;
+    if (!Number.isFinite(bboxVolumeCm3) || bboxVolumeCm3 <= 0 || volume > bboxVolumeCm3 * 1.001) {
+      throw new Error(`Volume CAD incoerente: ${volume.toFixed(3)} cm³ supera il bounding box (${bboxVolumeCm3.toFixed(3)} cm³). Dato non utilizzato nei calcoli.`);
     }
 
     const geo = {

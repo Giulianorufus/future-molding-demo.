@@ -121,6 +121,8 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         machineId TEXT,
         materialId TEXT,
         recipeId TEXT,
+        recipeFingerprint TEXT,
+        pressId TEXT,
         defectId TEXT,
         correctionId TEXT,
         outcomeId TEXT,
@@ -147,6 +149,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       CREATE TABLE IF NOT EXISTS experiments (
         id TEXT PRIMARY KEY,
         caseId TEXT NOT NULL,
+        sessionId TEXT,
         attemptNumber INTEGER NOT NULL,
         modifiedParameters TEXT NOT NULL,
         beforeValues TEXT,
@@ -189,13 +192,13 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
     const stmt = this.db.prepare(`
       INSERT INTO cases (
         id, caseNumber, createdAtISO, updatedAtISO, operatorId, operatorName,
-        machineId, materialId, recipeId, defectId, correctionId, outcomeId,
+        machineId, materialId, recipeId, recipeFingerprint, pressId, defectId, correctionId, outcomeId,
         geometryHash, projectedAreaCm2, volumeCm3, thicknessMm, flowLengthMm,
         cycleTimeMs, algorithmVersion, knowledgeVersion, materialLibraryVersion,
         pressLibraryVersion, notes, metadata
       ) VALUES (
         @id, @caseNumber, @createdAtISO, @updatedAtISO, @operatorId, @operatorName,
-        @machineId, @materialId, @recipeId, @defectId, @correctionId, @outcomeId,
+        @machineId, @materialId, @recipeId, @recipeFingerprint, @pressId, @defectId, @correctionId, @outcomeId,
         @geometryHash, @projectedAreaCm2, @volumeCm3, @thicknessMm, @flowLengthMm,
         @cycleTimeMs, @algorithmVersion, @knowledgeVersion, @materialLibraryVersion,
         @pressLibraryVersion, @notes, @metadata
@@ -208,6 +211,8 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         machineId = excluded.machineId,
         materialId = excluded.materialId,
         recipeId = excluded.recipeId,
+        recipeFingerprint = excluded.recipeFingerprint,
+        pressId = excluded.pressId,
         defectId = excluded.defectId,
         correctionId = excluded.correctionId,
         outcomeId = excluded.outcomeId,
@@ -478,16 +483,17 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
     const validRecord = knowledgeExperimentSchema.parse(record)
     const stmt = this.db.prepare(`
       INSERT INTO experiments (
-        id, caseId, attemptNumber, modifiedParameters, beforeValues, afterValues,
+        id, caseId, sessionId, attemptNumber, modifiedParameters, beforeValues, afterValues,
         reason, outcomeStatus, cycleTimeMs, confidenceBefore, confidenceAfter,
         operatorId, operatorName, createdAtISO, metadata
       ) VALUES (
-        @id, @caseId, @attemptNumber, @modifiedParameters, @beforeValues, @afterValues,
+        @id, @caseId, @sessionId, @attemptNumber, @modifiedParameters, @beforeValues, @afterValues,
         @reason, @outcomeStatus, @cycleTimeMs, @confidenceBefore, @confidenceAfter,
         @operatorId, @operatorName, @createdAtISO, @metadata
       )
       ON CONFLICT(id) DO UPDATE SET
         caseId = excluded.caseId,
+        sessionId = excluded.sessionId,
         attemptNumber = excluded.attemptNumber,
         modifiedParameters = excluded.modifiedParameters,
         beforeValues = excluded.beforeValues,

@@ -1,6 +1,18 @@
+/**
+ * Compatibility facade for the historical core API.
+ *
+ * All process calculations are delegated to ../engine/calcEngine so Wizard,
+ * Academy, simulation and diagnostics can share one calculation engine.
+ * Keep this file free of independent molding formulas.
+ */
+import { calcolaParametri as calculateUnified } from '../engine/calcEngine'
+import type { CadAnalysisMeta } from '../types/cadAnalysisMeta'
+
 export type CalculationInput = {
   volumeCm3: number
   shotVolumeCm3?: number
+  projectedAreaCm2?: number
+  cavityCount?: number
   press?: {
     id: string
     tonnellaggio: number
@@ -8,6 +20,7 @@ export type CalculationInput = {
     screwDiameterMm?: number
     maxPressureBar: number
     maxSpeedMmPerS: number
+    maxShotVolumeCm3?: number
   } | null
   material?: {
     id: string
@@ -24,67 +37,70 @@ export type CalculationResult = {
   switchoverMs: number
   times: { injectionMs: number; coolingMs: number }
   cooling: { suggestedC: number }
+  unified?: unknown
 }
-
-import type { CadAnalysisMeta } from '../types/cadAnalysisMeta'
 
 export type CalcContext = {
   defectId?: string | null
-  severity?: "low" | "medium" | "high" | string | null
+  severity?: 'low' | 'medium' | 'high' | string | null
   cadAnalysisMeta?: CadAnalysisMeta | null
 }
 
-export function calcolaTonnellaggio(volumeCm3: number, materialDensity?: number): number {
-  // Simplified estimation: volume * density -> grams. Convert to tonnellaggio as arbitrary factor.
-  const grams = volumeCm3 * (materialDensity ?? 1)
-  // assume force ~ grams * 0.1 -> convert to tons
-  return Math.max(1, Math.ceil((grams * 0.1) / 1000))
+function toFinite(value: unknown, fallback = 0): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
 }
 
-export function calcolaPressione(volumeCm3: number, shotVolumeCm3?: number): number {
-  // Placeholder: smaller parts -> lower pressure baseline
-  const base = 50
-  const ratio = (shotVolumeCm3 ? shotVolumeCm3 / Math.max(1, volumeCm3) : 1)
-  return Math.min(300, Math.round(base * ratio))
-}
-
-export function calcolaVelocità(pressMaxSpeed?: number): number {
-  return pressMaxSpeed ? Math.round(pressMaxSpeed * 0.8) : 100
-}
-
-export function calcolaSwitchover(volumeCm3: number): number {
-  // ms: smaller volume -> faster switchover
-  return Math.max(5, Math.round(30 / Math.sqrt(Math.max(1, volumeCm3))))
-}
-
-export function calcolaTempi(volumeCm3: number): { injectionMs: number; coolingMs: number } {
-  const injection = Math.round(Math.max(50, volumeCm3 * 2))
-  const cooling = Math.round(Math.max(200, volumeCm3 * 10))
-  return { injectionMs: injection, coolingMs: cooling }
-}
-
-export function calcolaRaffreddamento(materialTemp?: number): { suggestedC: number } {
-  return { suggestedC: materialTemp ?? 60 }
-}
-
-export function calcolaParametri(input: CalculationInput, context?: CalcContext): CalculationResult {
-  const { volumeCm3, press, material, shotVolumeCm3 } = input
-  const ton = calcolaTonnellaggio(volumeCm3, material?.densityGPerCm3)
-  const pressure = calcolaPressione(volumeCm3, shotVolumeCm3)
+export function calcolaParametri(input: CalculationInput, _context?: CalcContext): CalculationResult {
+  const press = input.press
+  const material = input.material
   const screw = press?.screwDiameterMm ?? press?.screwDiameters?.[0] ?? 20
-  const velocity = calcolaVelocità(press?.maxSpeedMmPerS)
-  const sw = calcolaSwitchover(volumeCm3)
-  const times = calcolaTempi(volumeCm3)
-  const cooling = calcolaRaffreddamento(material?.recommendedTemperatureC)
+
+  const unifiedInput: any = {
+    materialId: material?.id,
+    material: {
+      id: material?.id,
+      density_g_cm3: material?.densityGPerCm3,
+    },
+    machine: {
+      id: press?.id,
+      nome: press?.id,
+      tonnellaggio_kN: toFinite(press?.tonnellaggio) * 9.80665,
+      screwDiameter_mm: screw,
+      maxInjectionPressure_bar: press?.maxPressureBar,
+      // Legacy catalog calls this mm/s; the compatibility boundary passes the
+      // configured machine maximum through without inventing another formula.
+      maxInjectionSpeed_cm3_s: press?.maxSpeedMmPerS,
+      maxShotVolume_cm3: press?.maxShotVolumeCm3,
+    },
+    geometry: {
+      volumePezzo_cm3: input.volumeCm3,
+      volumeTotale_cm3: input.shotVolumeCm3 ?? input.volumeCm3,
+      areaProiettata_cm2: input.projectedAreaCm2,
+    },
+  }
+
+  const out: any = calculateUnified(unifiedInput)
+  const fillSec = Math.max(0, toFinite(out.fillTime, 0))
+  const coolingSec = Math.max(0, toFinite(out.coolingTime, 0))
+  const vpCm3 = Math.max(0, toFinite(out.vp, 0))
+  const flowCm3s = Math.max(0, toFinite(out.velIniezione, 0))
+  const switchoverMs = flowCm3s > 0 ? Math.round((vpCm3 / flowCm3s) * 1000) : 0
 
   return {
-    tonnellaggioRequired: ton,
-    pressureBar: pressure,
+    tonnellaggioRequired: Number(toFinite(out.tonnellaggio, 0).toFixed(1)),
+    pressureBar: Math.round(toFinite(out.pressioneIniezione, 0)),
     screwDiameterMm: screw,
-    velocityMmPerS: velocity,
-    switchoverMs: sw,
-    times,
-    cooling,
+    velocityMmPerS: Math.round(flowCm3s),
+    switchoverMs,
+    times: {
+      injectionMs: Math.max(1, Math.round(fillSec * 1000)),
+      coolingMs: Math.max(1, Math.round(coolingSec * 1000)),
+    },
+    cooling: {
+      suggestedC: Math.round(toFinite(out?.temperature?.stampo, material?.recommendedTemperatureC ?? 60)),
+    },
+    unified: out,
   }
 }
 

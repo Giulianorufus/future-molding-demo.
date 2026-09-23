@@ -15,17 +15,20 @@ export function applyPressLimits(result: any, pressSpecs?: PressSpecs | null): A
   if (!pressSpecs) return { resultClamped: result, warningsAdded: [], clampedFields: [], appliedCorrections: [] }
 
   // injection pressure
-  const maxP = pressSpecs.maxInjectionPressure_bar
-  if (typeof result.injectionPressure_bar === 'number' && Number.isFinite(maxP)) {
-    if (result.injectionPressure_bar > maxP) {
-      const before = result.injectionPressure_bar
-      result.injectionPressure_bar = maxP
+  const maxP = (pressSpecs as any).maxInjectionPressure_bar ?? (pressSpecs as any).maxPressureBar
+  const pressureField = typeof result.injectionPressure_bar === 'number' ? 'injectionPressure_bar'
+    : typeof result.computedInjectionPressure_bar === 'number' ? 'computedInjectionPressure_bar'
+    : typeof result.pressioneIniezione === 'number' ? 'pressioneIniezione' : null
+  if (pressureField && Number.isFinite(maxP)) {
+    if (result[pressureField] > maxP) {
+      const before = result[pressureField]
+      result[pressureField] = maxP
       warnings.push(`Clamped injectionPressure_bar to press max (${maxP} bar)`)
       clamped.push('injectionPressure_bar')
       appliedCorrections.push({
         id: `pressLimit:injectionPressure_bar`,
         type: 'pressLimit',
-        target: 'injectionPressure_bar',
+        target: pressureField,
         action: 'clamp',
         before,
         after: maxP,
@@ -60,17 +63,19 @@ export function applyPressLimits(result: any, pressSpecs?: PressSpecs | null): A
   }
 
   // injection speed (cm3/s)
-  const maxSpeed = pressSpecs.maxInjectionSpeed_cm3s
-  if (typeof result.injectionSpeed_cm3s === 'number' && Number.isFinite(maxSpeed)) {
-    if (result.injectionSpeed_cm3s > maxSpeed) {
-      const before = result.injectionSpeed_cm3s
-      result.injectionSpeed_cm3s = maxSpeed
+  const maxSpeed = (pressSpecs as any).maxInjectionSpeed_cm3s ?? (pressSpecs as any).maxSpeedCm3s
+  const speedField = typeof result.injectionSpeed_cm3s === 'number' ? 'injectionSpeed_cm3s'
+    : typeof result.injectionSpeedCm3s === 'number' ? 'injectionSpeedCm3s' : null
+  if (speedField && Number.isFinite(maxSpeed)) {
+    if (result[speedField] > maxSpeed) {
+      const before = result[speedField]
+      result[speedField] = maxSpeed
       warnings.push(`Clamped injectionSpeed_cm3s to press max (${maxSpeed} cm3/s)`)
       clamped.push('injectionSpeed_cm3s')
       appliedCorrections.push({
         id: `pressLimit:injectionSpeed_cm3s`,
         type: 'pressLimit',
-        target: 'injectionSpeed_cm3s',
+        target: speedField,
         action: 'clamp',
         before,
         after: maxSpeed,
@@ -83,8 +88,8 @@ export function applyPressLimits(result: any, pressSpecs?: PressSpecs | null): A
   }
 
   // shot volume (allow check both shotVolume_cm3 and vp_cm3)
-  const maxShot = pressSpecs.maxShot_cm3
-  const shotFields = ['shotVolume_cm3', 'vp_cm3']
+  const maxShot = (pressSpecs as any).maxShot_cm3 ?? (pressSpecs as any).shotVolumeCm3
+  const shotFields = ['shotVolume_cm3', 'shotVolumeCm3', 'vp_cm3', 'vpVolumeCm3']
   for (const f of shotFields) {
     if (typeof result[f] === 'number' && Number.isFinite(maxShot)) {
       if (result[f] > maxShot) {

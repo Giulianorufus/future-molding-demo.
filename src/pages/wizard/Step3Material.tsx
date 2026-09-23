@@ -1,6 +1,7 @@
 import React from 'react'
 import { useMaterialStore } from '@/stores/materialStore'
 import { materialCatalog } from '@/data/materialCatalog'
+import { materialLibrary } from '@/data/materialLibrary'
 
 export default function Step3Material({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
   const { catalog, selectedMaterialId, setCatalog, selectMaterial } = useMaterialStore()
@@ -27,12 +28,15 @@ export default function Step3Material({ onNext, onBack }: { onNext?: () => void;
         <div className="grid grid-cols-2 gap-2">
           {materials.length === 0 ? (
             <div className="text-sm text-gray-500">Nessun materiale disponibile</div>
-          ) : materials.map((m: any) => (
-            <button key={m.id} className={`p-3 border rounded text-left ${selectedMaterialId === m.id ? 'border-blue-700 bg-blue-50' : 'bg-white'}`} onClick={() => selectMaterial(m.id)}>
-              <div className="font-medium text-blue-800">{m.name}</div>
-              <div className="text-sm text-gray-600">Densità: {m.densityGPerCm3} g/cm³</div>
-            </button>
-          ))}
+          ) : materials.map((m: any) => {
+            const density = materialLibrary.byId(m.id)?.density_g_cm3
+            return (
+              <button key={m.id} className={`p-3 border rounded text-left ${selectedMaterialId === m.id ? 'border-blue-700 bg-blue-50' : 'bg-white'}`} onClick={() => selectMaterial(m.id)}>
+                <div className="font-medium text-blue-800">{m.name}</div>
+                <div className="text-sm text-gray-600">Densità: {density?.toFixed(3) ?? '--'} g/cm³</div>
+              </button>
+            )
+          })}
         </div>
       </div>
 

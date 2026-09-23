@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Database,
   Settings,
+  GraduationCap,
 } from "lucide-react";
 
 const linkBase =
@@ -59,6 +60,15 @@ export default function Sidebar() {
         }
       >
         <AlertTriangle size={20} /> Difetti
+      </NavLink>
+
+      <NavLink
+        to="/academy"
+        className={({ isActive }) =>
+          isActive ? `${linkBase} ${linkActive}` : linkBase
+        }
+      >
+        <GraduationCap size={20} /> Academy
       </NavLink>
 
       <NavLink

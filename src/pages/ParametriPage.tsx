@@ -1,6 +1,7 @@
 import { useParametriStore } from "../stores/parametriStore";
 import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
 import SimilarCasesPanel from "../components/SimilarCasesPanel";
+import ExportRecipeButton from "../components/ExportRecipeButton";
 import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
 import { useCaseStore } from "../stores/caseStore";
 import { useEffect } from "react";
@@ -194,6 +195,9 @@ export default function ParametriPage() {
               </tr>
             </tbody>
           </table>
+          <div className="mt-4">
+            <ExportRecipeButton />
+          </div>
 
           {/* Gate Freeze recommendation (minimal, read-only suggestion) */}
           <div className="mt-4" data-testid="gate-freeze-panel">

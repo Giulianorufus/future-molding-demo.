@@ -20,5 +20,5 @@ export function recommendedClampForceTon(
   }
 
   const forceTon = (projAreaCm2 * pressureGcm2) / 1000;
-  return Math.round(forceTon);
+  return Math.round(forceTon * 10) / 10;
 }

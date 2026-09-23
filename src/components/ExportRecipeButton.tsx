@@ -5,25 +5,87 @@ import { buildRecipeSnapshot } from '../engine/recipeExport/buildRecipeSnapshot'
 import { exportRecipeJson } from '../engine/recipeExport/exportRecipeJson';
 import { exportRecipeCsv } from '../engine/recipeExport/exportRecipeCsv';
 import { exportRecipePdf } from '../engine/recipeExport/exportRecipePdf';
+import type { RecipeSnapshot } from '../engine/recipeExport/recipeTypes';
+import { useDrawingStore } from '../stores/drawingStore';
+import { materialLibrary } from '../data/materialLibrary';
+import { useMaterialStore } from '../stores/materialStore';
+import { usePressStore } from '../stores/pressStore';
 import { downloadBlob } from '../utils/download';
 
+export function buildExportRecipeSnapshot({
+  input,
+  output,
+  drawing,
+  press,
+  screwDiameterMm,
+  material,
+}: {
+  input: Record<string, any> | null;
+  output: Record<string, any> | null;
+  drawing: ReturnType<typeof useDrawingStore.getState>;
+  press: { id: string; name: string; tonnellaggio: number; shotVolumeCm3: number; maxPressureBar: number; maxSpeedMmPerS: number } | null;
+  screwDiameterMm: number | null;
+  material: { id: string; name: string; densityGPerCm3?: number; meltIndex?: number | null; recommendedTemperatureC?: number | null } | null;
+}): RecipeSnapshot {
+  const canonicalMaterial = material ? materialLibrary.byId(material.id) : undefined;
+  const densityGPerCm3 = material?.densityGPerCm3 ?? canonicalMaterial?.density_g_cm3;
+  return buildRecipeSnapshot({
+    input: {
+      ...(input ?? {}),
+      cad: {
+        volumeCm3: drawing.volumeCm3,
+        projectedAreaCm2: drawing.surfaceCm2,
+        boundingBoxMm: drawing.boundingBox,
+        sourceFormat: drawing.conversionId ? 'STEP/IGES' : undefined,
+      },
+      mold: {
+        cavityCount: drawing.cavityCount,
+        feedSystem: drawing.feedSystem,
+        runnerVolumeCm3: drawing.runnerVolumeCm3,
+        runnerProjectedAreaCm2: drawing.runnerProjectedAreaCm2,
+      },
+    },
+    output: output ?? {},
+    press: press
+      ? {
+          id: press.id,
+          model: press.name,
+          screwDiameter_mm: screwDiameterMm ?? undefined,
+          limits: {
+            tonnellaggio: press.tonnellaggio,
+            shotVolumeCm3: press.shotVolumeCm3,
+            maxPressureBar: press.maxPressureBar,
+            maxSpeedMmPerS: press.maxSpeedMmPerS,
+          },
+        }
+      : undefined,
+    material: material
+      ? {
+          id: material.id,
+          name: material.name,
+          factors: {
+            densityGPerCm3: densityGPerCm3 ?? 0,
+            meltIndex: material.meltIndex ?? canonicalMaterial?.mvr_g_10min?.typical ?? 0,
+            recommendedTemperatureC: material.recommendedTemperatureC ?? canonicalMaterial?.meltTemp_C.typical ?? 0,
+          },
+        }
+      : undefined,
+    warnings: (output as any)?.warnings ?? [],
+    assumptions: (output as any)?.assumptions ?? [],
+    defect: (output as any)?.defect ?? null,
+  });
+}
+
 export function ExportRecipeButton() {
-  const lastCalcInput = useParametriStore((s: any) => s.lastCalcInput);
-  const lastCalcResult = useParametriStore((s: any) => s.lastCalcResult);
-  const projectName = useParametriStore((s: any) => s.projectName) ?? null;
+  const lastInput = useParametriStore((s) => s.lastInput);
+  const result = useParametriStore((s) => s.result ?? s.lastCalcResult);
+  const drawing = useDrawingStore();
+  const press = usePressStore((s) => s.selectedPressId ? s.catalog[s.selectedPressId] ?? null : null);
+  const screwDiameterMm = usePressStore((s) => s.selectedScrewDiameter_mm);
+  const material = useMaterialStore((s) => s.selectedMaterialId ? s.catalog[s.selectedMaterialId] ?? null : null);
 
   const onClick = async () => {
-    const snapshot = buildRecipeSnapshot({
-      projectName,
-      input: lastCalcInput ?? {},
-      output: lastCalcResult ?? {},
-      press: (lastCalcInput as any)?.press ?? (lastCalcResult as any)?.press ?? undefined,
-      material: (lastCalcInput as any)?.material ?? (lastCalcResult as any)?.material ?? undefined,
-      warnings: (lastCalcResult as any)?.warnings ?? [],
-      assumptions: (lastCalcResult as any)?.assumptions ?? [],
-      defect: (lastCalcResult as any)?.defect ?? null,
-      appVersion: (import.meta as any).env?.VITE_APP_VERSION ?? "dev",
-    });
+    const snapshot = buildExportRecipeSnapshot({ input: lastInput, output: result, drawing, press, screwDiameterMm, material });
 
     const json = exportRecipeJson(snapshot);
     downloadBlob('recipe.json', new Blob([json], { type: 'application/json' }));
@@ -36,7 +98,7 @@ export function ExportRecipeButton() {
   };
 
   return (
-    <button className="btn btn-primary" onClick={onClick}>Export recipe</button>
+    <button className="btn btn-primary" onClick={onClick} disabled={!result}>Esporta ricetta</button>
   );
 }
 

@@ -40,3 +40,6 @@ project-full-preview/
 playwright-report/
 test-results/
 **/.last-run.json
+
+# Generated Gate Freeze test output
+scripts/gate-freeze/out-test/

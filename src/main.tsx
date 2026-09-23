@@ -13,6 +13,7 @@ import RaccoltaDati from "./pages/RaccoltaDati";
 import Difetti from "./pages/Difetti";
 import Impostazioni from "./pages/Impostazioni";
 import Wizard from "./pages/Wizard";
+import Academy from "./pages/Academy";
 
 import "./index.css";
 import { killOcct } from '@/lib/occtInit';
@@ -34,6 +35,7 @@ const router = createHashRouter([
       { path: "difetti", element: <Difetti /> },
       { path: "impostazioni", element: <Impostazioni /> },
       { path: "wizard", element: <Wizard /> },
+      { path: "academy", element: <Academy /> },
     ],
   },
 ]);

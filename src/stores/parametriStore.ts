@@ -366,9 +366,17 @@ if (typeof window !== 'undefined') {
       const pressEntry = p?.selectedPressId ? (p.catalog?.[p.selectedPressId] ?? null) : null
       const materialEntry = m?.selectedMaterialId ? (m.catalog?.[m.selectedMaterialId] ?? null) : null
 
+      const cavityCount = Math.max(1, Math.floor(Number((d as any)?.cavityCount) || 1))
+      const feedSystem = (d as any)?.feedSystem ?? 'unknown'
+      const runnerVolume = feedSystem === 'cold' ? Math.max(0, Number((d as any)?.runnerVolumeCm3) || 0) : 0
+      const singlePartVolume = d?.volumeCm3 ?? 0
+      const singlePartArea = Number((d as any)?.surfaceCm2) || 0
+
       const baseInput: CalculationInput = {
-        volumeCm3: d?.volumeCm3 ?? 0,
-        shotVolumeCm3: undefined,
+        volumeCm3: singlePartVolume,
+        shotVolumeCm3: singlePartVolume * cavityCount + runnerVolume,
+        // Unified engine owns cavity/runner scaling; pass single-part CAD area here.\n        projectedAreaCm2: singlePartArea > 0 ? singlePartArea : undefined,
+        cavityCount,
         press: pressEntry
           ? {
               id: p.selectedPressId,

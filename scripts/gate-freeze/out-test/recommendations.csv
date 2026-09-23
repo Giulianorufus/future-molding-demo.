@@ -1,3 +1,0 @@
-groupKey,recommendedHoldingTime_s,plateauWeight_g,eps_g,confidence,method,nPoints,usedKey
-"fp-ABS",3,9.987,0.02,0.5339999999999996,"weight_plateau",5,"weight_g"
-"fp-PP",3,12.305,0.02,0.475,"weight_plateau",4,"weight_g"

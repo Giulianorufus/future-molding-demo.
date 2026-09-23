@@ -36,7 +36,10 @@ describeCad("cadAnalysis (integration)", () => {
     // 3) Import dinamico: garantisce che il mock sia già attivo
     const { analyzeCADFile } = await import("../cadAnalysis");
 
-    const fakeFile = new File(["dummy"], "test.step", { type: "model/step" });
+    const fakeFile = {
+      name: "test.step",
+      arrayBuffer: async () => new TextEncoder().encode("dummy").buffer,
+    };
 
     const result = await analyzeCADFile(fakeFile as unknown as File);
 

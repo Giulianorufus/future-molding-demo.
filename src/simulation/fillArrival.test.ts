@@ -164,4 +164,45 @@ describe('surface fill arrival thickness model', () => {
     expect(field?.totalVertices).toBe(6)
     expect(Array.from(field!.geometry.getAttribute('fillArrival').array as Float32Array).every(Number.isFinite)).toBe(true)
   })
+
+  test('two opposite gates are both zero-arrival sources', () => {
+    const field = buildSurfaceFillArrival(makeIndexedPlane([2, 2, 2, 2]), [
+      { id: 'G1', position: { x: 0, y: 0, z: 0 } },
+      { id: 'G2', position: { x: 10, y: 10, z: 0 } },
+    ])!
+    const arrival = field.geometry.getAttribute('fillArrival') as THREE.BufferAttribute
+
+    expect(arrival.getX(0)).toBe(0)
+    expect(arrival.getX(2)).toBe(0)
+    expect(field.sourceGateIndex[0]).toBe(0)
+    expect(field.sourceGateIndex[2]).toBe(1)
+    expect(field.sourceGateIndex[1]).toBe(0)
+    expect(field.sourceGateIndex[3]).toBe(0)
+  })
+
+  test('all vertices can be sources without a zero-distance normalization failure', () => {
+    const gates = [[0, 0], [10, 0], [10, 10], [0, 10]].map(([x, y], index) => ({ id: `G${index}`, position: { x, y, z: 0 } }))
+    const field = buildSurfaceFillArrival(makeIndexedPlane([2, 2, 2, 2]), gates)!
+    expect(Array.from(field.spatialFillArrival)).toEqual([0, 0, 0, 0])
+    expect(Array.from(field.sourceGateIndex)).toEqual([0, 1, 2, 3])
+  })
+
+  test('four gates, duplicate gates, invalid gates and ties are deterministic', () => {
+    const box = new THREE.BoxGeometry(20, 20, 2)
+    const gates = [
+      { id: 'G1', position: { x: -10, y: -10, z: -1 } },
+      { id: 'G2', position: { x: 10, y: -10, z: -1 } },
+      { id: 'G3', position: { x: 10, y: 10, z: 1 } },
+      { id: 'G4', position: { x: -10, y: 10, z: 1 } },
+      { id: 'DUP', position: { x: -10, y: -10, z: -1 } },
+      { id: 'INVALID', position: { x: NaN, y: 0, z: 0 } },
+    ]
+    const first = buildSurfaceFillArrival(box, gates)!
+    const second = buildSurfaceFillArrival(box, gates)!
+
+    expect(new Set(Array.from(first.sourceGateIndex))).toEqual(new Set([0, 1, 2, 3]))
+    expect(Array.from(first.sourceGateIndex)).toEqual(Array.from(second.sourceGateIndex))
+    expect(Array.from(first.geometry.getAttribute('fillArrival').array as Float32Array)).toEqual(Array.from(second.geometry.getAttribute('fillArrival').array as Float32Array))
+    expect(Array.from(first.sourceGateIndex).every(Number.isInteger)).toBe(true)
+  })
 })

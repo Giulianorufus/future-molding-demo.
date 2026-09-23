@@ -4,6 +4,7 @@ import { useDrawingStore } from '@/stores/drawingStore'
 import { useMaterialStore } from '@/stores/materialStore'
 import { materialCatalog } from '@/data/materialCatalog'
 import { buildSurfaceFillArrival, type FillProcessContext } from '@/simulation/fillArrival'
+import type { InjectionGate } from '@/types/injectionGate'
 
 type Props = { viewerUrl: string; durationMs?: number }
 
@@ -15,7 +16,12 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
   const [progress, setProgress] = useState(0)
   const [running, setRunning] = useState(false)
   const gatePoint = useDrawingStore((s) => s.gatePoint)
-  const setDrawingResult = useDrawingStore((s) => s.setResult)
+  const gates = useDrawingStore((s) => s.gates)
+  const selectedGateId = useDrawingStore((s) => s.selectedGateId)
+  const addGate = useDrawingStore((s) => s.addGate)
+  const removeGate = useDrawingStore((s) => s.removeGate)
+  const clearGates = useDrawingStore((s) => s.clearGates)
+  const selectGate = useDrawingStore((s) => s.selectGate)
   const selectedMaterialId = useMaterialStore((s) => s.selectedMaterialId)
   const selectedMaterial = materialCatalog.find((material) => material.id === selectedMaterialId)
   const fillProcessContext: FillProcessContext | undefined = selectedMaterial
@@ -52,18 +58,53 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     let minX = -40, maxX = 40
     const fillMaterials: THREE.ShaderMaterial[] = []
     const originalGeometries = new Map<THREE.Mesh, THREE.BufferGeometry>()
+    const gateMarkers = new Map<string, THREE.Sprite>()
+    const effectiveGates = (): InjectionGate[] => {
+      const state = useDrawingStore.getState()
+      if (state.gates.length) return state.gates
+      return state.gatePoint ? [{ id: 'G1', position: state.gatePoint, normal: state.gateNormal ?? undefined }] : []
+    }
+    const createGateMarker = (gate: InjectionGate) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 96; canvas.height = 96
+      const context = canvas.getContext('2d')!
+      context.fillStyle = '#ffffff'
+      context.beginPath(); context.arc(48, 48, 34, 0, Math.PI * 2); context.fill()
+      context.fillStyle = '#111827'; context.font = 'bold 28px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(gate.id, 48, 48)
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false }))
+      sprite.userData.gateId = gate.id
+      sprite.scale.set(7, 7, 1)
+      scene.add(sprite); gateMarkers.set(gate.id, sprite)
+    }
+    const syncGateMarkers = () => {
+      const current = effectiveGates()
+      for (const [id, marker] of gateMarkers) {
+        if (!current.some((gate) => gate.id === id)) {
+          marker.removeFromParent(); marker.material.map?.dispose(); marker.material.dispose(); gateMarkers.delete(id)
+        }
+      }
+      for (const gate of current) {
+        if (!gateMarkers.has(gate.id)) createGateMarker(gate)
+        const marker = gateMarkers.get(gate.id)!
+        marker.position.set(gate.position.x, gate.position.y, gate.position.z)
+        if (model) model.localToWorld(marker.position)
+        marker.material.color.set(gate.id === useDrawingStore.getState().selectedGateId ? '#f4c430' : '#f59e0b')
+      }
+    }
     const rebuildGateFill = () => {
       if (!model) return
       fillMaterials.splice(0).forEach(m => m.dispose())
       model.traverse((o: any) => {
         if (!o.isMesh || !o.geometry) return
         if (!originalGeometries.has(o)) originalGeometries.set(o, o.geometry)
-        else o.geometry = originalGeometries.get(o)!
-        const gp = useDrawingStore.getState().gatePoint
-        if (!gp) return
-        const worldGate = new THREE.Vector3(gp.x, gp.y, gp.z)
-        const localGate = o.worldToLocal(worldGate.clone())
-        const field = buildSurfaceFillArrival(o.geometry, localGate, { processContext: fillProcessContext })
+        else {
+          if (o.geometry !== originalGeometries.get(o)) o.geometry.dispose()
+          o.geometry = originalGeometries.get(o)!
+        }
+        const currentGates = effectiveGates()
+        if (!currentGates.length) return
+        const localGates = currentGates.map((gate) => ({ ...gate, position: o.worldToLocal(model!.localToWorld(new THREE.Vector3(gate.position.x, gate.position.y, gate.position.z))) }))
+        const field = buildSurfaceFillArrival(o.geometry, localGates, { processContext: fillProcessContext })
         if (!field) return
         o.geometry = field.geometry
         const material = new THREE.ShaderMaterial({
@@ -99,7 +140,10 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       model.traverse((o: any) => {
         if (!o.isMesh) return
         const original = originalGeometries.get(o)
-        if (original) o.geometry = original
+        if (original) {
+          if (o.geometry !== original) o.geometry.dispose()
+          o.geometry = original
+        }
         o.material = new THREE.MeshStandardMaterial({
           color: 0x1597e5, roughness: 0.6, metalness: 0.02,
           side: THREE.DoubleSide,
@@ -108,50 +152,42 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     }
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
-    const gateMarker = new THREE.Mesh(
-      new THREE.SphereGeometry(2.2, 20, 20),
-      new THREE.MeshStandardMaterial({ color: 0xf4c430, emissive: 0x5a4300 })
-    )
-    gateMarker.visible = false
-    scene.add(gateMarker)
-
-    const placeMarkerFromStore = () => {
-      const gp = useDrawingStore.getState().gatePoint
-      gateMarker.visible = !!gp
-      if (gp) gateMarker.position.set(gp.x, gp.y, gp.z)
-    }
-    placeMarkerFromStore()
+    syncGateMarkers()
     const unsubscribeGate = useDrawingStore.subscribe((state, previousState) => {
-      if (state.gatePoint === previousState.gatePoint) return
-
-      const gp = state.gatePoint
-
-      if (!gp) {
-        gateMarker.visible = false
+      if (state.gates === previousState.gates && state.gatePoint === previousState.gatePoint && state.selectedGateId === previousState.selectedGateId) return
+      syncGateMarkers()
+      if (state.gates === previousState.gates) return
+      if (!effectiveGates().length) {
         restoreAxisFill()
         return
       }
-
-      gateMarker.position.set(gp.x, gp.y, gp.z)
-      gateMarker.visible = true
-
       if (model) rebuildGateFill()
     })
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!selectingGateRef.current || !model) return
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
+      const markerHit = raycaster.intersectObjects(Array.from(gateMarkers.values()), true)[0]
+      if (markerHit) {
+        const gateId = markerHit.object.userData.gateId
+        if (gateId) selectGate(gateId)
+        selectingGateRef.current = false
+        setSelectingGate(false)
+        return
+      }
+      if (!selectingGateRef.current || !model) return
       const hit = raycaster.intersectObject(model, true)[0]
       if (!hit) return
       const normal = hit.face?.normal?.clone() ?? new THREE.Vector3(0, 0, 1)
-      normal.transformDirection(hit.object.matrixWorld)
-      setDrawingResult({
-        gatePoint: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
-        gateNormal: { x: normal.x, y: normal.y, z: normal.z },
-      })
+      normal.applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+      normal.applyMatrix3(new THREE.Matrix3().getNormalMatrix(model.matrixWorld.clone().invert())).normalize()
+      const localPoint = model.worldToLocal(hit.point.clone())
+      const currentIds = new Set(effectiveGates().map((gate) => gate.id))
+      let sequence = 1
+      while (currentIds.has(`G${sequence}`)) sequence += 1
+      addGate({ id: `G${sequence}`, position: { x: localPoint.x, y: localPoint.y, z: localPoint.z }, normal: { x: normal.x, y: normal.y, z: normal.z } })
       selectingGateRef.current = false
       setSelectingGate(false)
     }
@@ -191,7 +227,8 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
             })
           })
           renderer.localClippingEnabled = true
-          if (useDrawingStore.getState().gatePoint) rebuildGateFill()
+          syncGateMarkers()
+          if (effectiveGates().length) rebuildGateFill()
           const d = 120
           camera.position.set(d * .75, d * .55, d * 1.15)
           camera.lookAt(0, 0, 0)
@@ -221,9 +258,9 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
     frame = requestAnimationFrame(loop)
     return () => {
       disposed = true
-      unsubscribeGate(); cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = ''
+      unsubscribeGate(); cancelAnimationFrame(frame); renderer.domElement.removeEventListener('pointerdown', onPointerDown); fillMaterials.forEach(m => m.dispose()); for (const marker of gateMarkers.values()) { marker.removeFromParent(); marker.material.map?.dispose(); marker.material.dispose() }; controls?.dispose?.(); renderer.dispose(); renderer.forceContextLoss?.(); if (host.current) host.current.innerHTML = ''
     }
-  }, [viewerUrl, durationMs, setDrawingResult, selectedMaterialId])
+  }, [viewerUrl, durationMs, selectedMaterialId])
 
   useEffect(() => {
     // Gate removal is handled by remount-safe state; selecting a new gate rebuilds the field.
@@ -243,9 +280,10 @@ export default function FillSimulationViewer({ viewerUrl, durationMs = 3000 }: P
       <div className="font-mono text-sm">{Math.round(progress * 100)}% · {(progress * durationMs / 1000).toFixed(2)} s</div>
     </div>
     <div className="mb-2 flex items-center gap-2">
-      <button className={`rounded px-3 py-2 text-sm ${selectingGate ? 'bg-yellow-400 text-blue-950' : 'border'}`} onClick={() => setSelectingGate(v => !v)}>{selectingGate ? 'Clicca sul pezzo…' : gatePoint ? 'Cambia punto iniezione' : 'Seleziona punto iniezione'}</button>
-      {gatePoint && <button className="rounded border px-3 py-2 text-sm" onClick={() => { setDrawingResult({ gatePoint: null, gateNormal: null }); reset(); }}>Rimuovi gate</button>}
-      {gatePoint && <span className="text-xs text-gray-500">Gate selezionato</span>}
+      <button className={`rounded px-3 py-2 text-sm ${selectingGate ? 'bg-yellow-400 text-blue-950' : 'border'}`} onClick={() => setSelectingGate(v => !v)}>{selectingGate ? 'Clicca sul pezzo…' : 'Aggiungi punto iniezione'}</button>
+      {selectedGateId && <button className="rounded border px-3 py-2 text-sm" onClick={() => { removeGate(selectedGateId); reset(); }}>Rimuovi gate</button>}
+      {gates.length > 0 && <button className="rounded border px-3 py-2 text-sm" onClick={() => { clearGates(); reset(); }}>Rimuovi tutti</button>}
+      {selectedGateId && <span className="text-xs text-gray-500">{selectedGateId} selezionato</span>}
     </div>
     <div ref={host} className={`w-full overflow-hidden rounded ${selectingGate ? 'cursor-crosshair' : ''}`} style={{ height: 360 }} />
     <input aria-label="Avanzamento riempimento" className="mt-3 w-full" type="range" min="0" max="100" value={Math.round(progress * 100)} onChange={e => { setRunning(false); runningRef.current=false; const p=Number(e.target.value)/100; setProgress(p); progressRef.current=p; startRef.current=0 }} />

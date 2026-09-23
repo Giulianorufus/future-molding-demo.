@@ -1,7 +1,19 @@
 import { useDrawingStore } from '@/stores/drawingStore';
+import { loadStepWithOcctAndAnalyze } from '@/cad/loaders/stepLoader';
+
+// These tests verify routing and initial state, not OCCT parsing. The pipeline
+// deliberately returns before conversion finishes, so awaiting it cannot drain
+// a real loader (and dummy jsdom Files are not valid STEP inputs).
+jest.mock('@/cad/loaders/stepLoader', () => ({
+  loadStepWithOcctAndAnalyze: jest.fn().mockResolvedValue({}),
+}));
+jest.mock('@/lib/cadAnalysis', () => ({
+  analyzeCADFile: jest.fn().mockResolvedValue({ volume: 1, surface_area: 2 }),
+}));
 
 describe('CAD Pipeline: STEP Conversion Flow', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     useDrawingStore.getState().reset();
   });
 
@@ -24,6 +36,7 @@ describe('CAD Pipeline: STEP Conversion Flow', () => {
     // In browser: 'converting', In Jest/Node: may be 'converting' or 'error'
     expect(['converting', 'error']).toContain(state.conversionStatus);
     expect(state.conversionMessage).toBeDefined();
+    expect(loadStepWithOcctAndAnalyze).toHaveBeenCalledWith(stepFile, state.conversionId);
     await pending;
   });
 
@@ -44,10 +57,7 @@ describe('CAD Pipeline: STEP Conversion Flow', () => {
     const glbFile = new File(['dummy GLB'], 'model.glb', { type: 'model/gltf-binary' });
     const { startCadPipeline } = await import('../cadPipeline');
     
-    startCadPipeline(glbFile);
-
-    // Wait a moment for analyzeCADFile to complete
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await startCadPipeline(glbFile);
     const state = useDrawingStore.getState();
     
     // For GLB files in Jest (no URL.createObjectURL in Node):
@@ -55,6 +65,7 @@ describe('CAD Pipeline: STEP Conversion Flow', () => {
     // - In Jest: conversionStatus may be 'error' due to missing browser APIs
     // Key check: NOT in 'converting' state (unlike STEP files)
     expect(state.conversionStatus).not.toBe('converting');
+    expect(loadStepWithOcctAndAnalyze).not.toHaveBeenCalled();
   });
 
   it('should detect IGES file and set conversion status to converting', async () => {

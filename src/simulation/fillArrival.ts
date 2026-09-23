@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { InjectionGate } from '@/types/injectionGate'
 
 export type FillArrivalField = {
   geometry: THREE.BufferGeometry
@@ -9,6 +10,7 @@ export type FillArrivalField = {
   maxDistance: number
   /** Dimensionless normalized spatial arrival field, also stored as fillArrival. */
   spatialFillArrival: Float32Array
+  sourceGateIndex: Int32Array
   /** Dimensionless material resistance factor derived from canonical flowFactor. */
   viscosityFactor: number
   materialId?: string
@@ -27,6 +29,8 @@ export type FillArrivalOptions = {
   maxMeasuredVertices?: number
   processContext?: FillProcessContext
 }
+
+export const FILL_GATE_TIE_EPSILON = 1e-9
 
 export type FillProcessContext = {
   materialId?: string
@@ -185,7 +189,7 @@ function buildLocalThickness(geometry: THREE.BufferGeometry, options: FillArriva
  * Distances follow mesh edges (Dijkstra), so the front follows the part
  * surface instead of an arbitrary world axis. This is not a volumetric flow solver.
  */
-export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal: THREE.Vector3, options: FillArrivalOptions = {}): FillArrivalField | null {
+export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal: THREE.Vector3 | InjectionGate[], options: FillArrivalOptions = {}): FillArrivalField | null {
   const geometry = source.clone()
   const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined
   if (!position || position.count === 0) return null
@@ -260,32 +264,46 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     for (let i = 0; i + 2 < position.count; i += 3) triangle(i, i + 1, i + 2)
   }
 
-  let sourceVertex = 0
-  let nearest = Infinity
-  for (let i = 0; i < position.count; i++) {
-    a.fromBufferAttribute(position, i)
-    const d = a.distanceToSquared(gateLocal)
-    if (d < nearest) { nearest = d; sourceVertex = i }
+  const rawGates = gateLocal instanceof THREE.Vector3
+    ? [{ position: gateLocal, gateIndex: 0 }]
+    : gateLocal.map((gate, gateIndex) => ({ position: new THREE.Vector3(gate.position.x, gate.position.y, gate.position.z), gateIndex }))
+  const gates: Array<{ index: number; gateIndex: number }> = []
+  for (const gate of rawGates) {
+    if (![gate.position.x, gate.position.y, gate.position.z].every(Number.isFinite)) continue
+    let sourceVertex = 0
+    let nearest = Infinity
+    for (let i = 0; i < position.count; i++) {
+      a.fromBufferAttribute(position, i)
+      const d = a.distanceToSquared(gate.position)
+      if (d < nearest || (Math.abs(d - nearest) <= FILL_GATE_TIE_EPSILON && i < sourceVertex)) { nearest = d; sourceVertex = i }
+    }
+    const duplicate = gates.find((item) => item.index === sourceVertex)
+    if (duplicate) {
+      duplicate.gateIndex = Math.min(duplicate.gateIndex, gate.gateIndex)
+    } else gates.push({ index: sourceVertex, gateIndex: gate.gateIndex })
   }
+  if (!gates.length) return null
 
   const dist = new Float64Array(position.count)
   dist.fill(Infinity)
-  dist[sourceVertex] = 0
-  const visited = new Uint8Array(position.count)
+  const sourceGateIndex = new Int32Array(position.count)
+  sourceGateIndex.fill(-1)
 
-  // Binary min-heap [distance, vertex].
-  const heap: Array<[number, number]> = [[0, sourceVertex]]
-  const push = (item: [number, number]) => {
+  // Binary min-heap [distance, vertex, source gate index].
+  const heap: Array<[number, number, number]> = []
+  const precedes = (a: [number, number, number], b: [number, number, number]) =>
+    a[0] < b[0] || (a[0] === b[0] && (a[2] < b[2] || (a[2] === b[2] && a[1] < b[1])))
+  const push = (item: [number, number, number]) => {
     heap.push(item)
     let i = heap.length - 1
     while (i > 0) {
       const p = (i - 1) >> 1
-      if (heap[p][0] <= heap[i][0]) break
+      if (!precedes(heap[i], heap[p])) break
       ;[heap[p], heap[i]] = [heap[i], heap[p]]
       i = p
     }
   }
-  const pop = (): [number, number] | undefined => {
+  const pop = (): [number, number, number] | undefined => {
     if (!heap.length) return undefined
     const root = heap[0]
     const tail = heap.pop()!
@@ -295,8 +313,8 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
       for (;;) {
         let smallest = i
         const l = i * 2 + 1, r = l + 1
-        if (l < heap.length && heap[l][0] < heap[smallest][0]) smallest = l
-        if (r < heap.length && heap[r][0] < heap[smallest][0]) smallest = r
+        if (l < heap.length && precedes(heap[l], heap[smallest])) smallest = l
+        if (r < heap.length && precedes(heap[r], heap[smallest])) smallest = r
         if (smallest === i) break
         ;[heap[i], heap[smallest]] = [heap[smallest], heap[i]]
         i = smallest
@@ -305,14 +323,25 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     return root
   }
 
+  for (const gate of gates) {
+    dist[gate.index] = 0
+    sourceGateIndex[gate.index] = gate.gateIndex
+    push([0, gate.index, gate.gateIndex])
+  }
+
   while (heap.length) {
     const current = pop()!
-    const [d, v] = current
-    if (visited[v]) continue
-    visited[v] = 1
+    const [d, v, source] = current
+    if (d !== dist[v] || source !== sourceGateIndex[v]) continue
     for (const [n, w] of neighbors[v]) {
       const nd = d + w
-      if (nd < dist[n]) { dist[n] = nd; push([nd, n]) }
+      const betterDistance = nd < dist[n] - FILL_GATE_TIE_EPSILON
+      const sameDistanceBetterGate = Math.abs(nd - dist[n]) <= FILL_GATE_TIE_EPSILON && (sourceGateIndex[n] < 0 || source < sourceGateIndex[n])
+      if (betterDistance || sameDistanceBetterGate) {
+        dist[n] = nd
+        sourceGateIndex[n] = source
+        push([nd, n, source])
+      }
     }
   }
 
@@ -323,10 +352,8 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     reached++
     maxDistance = Math.max(maxDistance, dist[i])
   }
-  if (!(maxDistance > 0)) return null
-
   const arrival = new Float32Array(position.count)
-  for (let i = 0; i < dist.length; i++) arrival[i] = Number.isFinite(dist[i]) ? dist[i] / maxDistance : 1
+  for (let i = 0; i < dist.length; i++) arrival[i] = Number.isFinite(dist[i]) ? (maxDistance > 0 ? dist[i] / maxDistance : 0) : 1
   geometry.setAttribute('fillArrival', new THREE.BufferAttribute(arrival, 1))
   geometry.userData.fillReachability = {
     reachedVertices: reached,
@@ -339,6 +366,7 @@ export function buildSurfaceFillArrival(source: THREE.BufferGeometry, gateLocal:
     maxRawArrival: maxDistance,
     maxDistance,
     spatialFillArrival: arrival,
+    sourceGateIndex,
     viscosityFactor,
     materialId: options.processContext?.materialId,
     minLocalThickness: Math.min(...thicknessValues),

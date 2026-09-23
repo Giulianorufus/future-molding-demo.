@@ -14,10 +14,14 @@ test('parseCAD times out and disposes worker', async () => {
   const oldNodeEnv = process.env.NODE_ENV;
   const oldRun = process.env.RUN_CAD_INTEGRATION;
   const oldTimeout = process.env.CAD_PARSE_TIMEOUT_MS;
+  const oldWorker = global.Worker;
   try {
     process.env.NODE_ENV = 'development';
     process.env.RUN_CAD_INTEGRATION = '1';
     process.env.CAD_PARSE_TIMEOUT_MS = '50'; // fast timeout
+    // parseCAD checks Worker availability before using the injected worker.
+    // Without this, jsdom falls through to real OCCT on an invalid STEP buffer.
+    global.Worker = class {} as any;
 
     const cadParser = await import('../cadParser');
 
@@ -25,7 +29,7 @@ test('parseCAD times out and disposes worker', async () => {
     const fake = {
       addEventListener: (_: any, __: any) => {},
       removeEventListener: (_: any, __: any) => {},
-      postMessage: (_: any) => {},
+      postMessage: jest.fn(),
       terminate: jest.fn(),
     };
     cadParser.__setCadWorkerForTest(fake);
@@ -46,9 +50,13 @@ test('parseCAD times out and disposes worker', async () => {
 
     // cleanup chiamato almeno una volta (worker terminate)
     expect(fake.terminate).toHaveBeenCalled();
+    expect(fake.postMessage).toHaveBeenCalledTimes(1);
   } finally {
-    process.env.NODE_ENV = oldNodeEnv;
-    process.env.RUN_CAD_INTEGRATION = oldRun;
-    process.env.CAD_PARSE_TIMEOUT_MS = oldTimeout;
+    if (oldWorker === undefined) delete (global as any).Worker;
+    else global.Worker = oldWorker;
+    for (const [key, value] of Object.entries({ NODE_ENV: oldNodeEnv, RUN_CAD_INTEGRATION: oldRun, CAD_PARSE_TIMEOUT_MS: oldTimeout })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });

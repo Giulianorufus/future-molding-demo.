@@ -2,7 +2,3 @@
 . "$(dirname "$0")/_/husky.sh"
 
 npm run check
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
-npm run check

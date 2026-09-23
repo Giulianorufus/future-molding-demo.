@@ -1,5 +1,5 @@
 import { useParametriStore } from "../stores/parametriStore";
-import ProcessProfilesPanel from "../components/ProcessProfilesPanel";
+import OperatorRecipePanel from "../components/OperatorRecipePanel";
 import SimilarCasesPanel from "../components/SimilarCasesPanel";
 import ExportRecipeButton from "../components/ExportRecipeButton";
 import { buildRecipeSnapshot } from "../engine/recipeExport/buildRecipeSnapshot";
@@ -111,7 +111,7 @@ export default function ParametriPage() {
   }, [result, gateFreeze])
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <h1 className="text-3xl font-bold mb-8">Sintesi calcolo</h1>
 
       {/* Stato: nessun calcolo ancora fatto */}
@@ -135,67 +135,8 @@ export default function ParametriPage() {
 
       {/* Risultato */}
       {result && (
-        <div className="bg-white p-6 shadow rounded max-w-3xl">
-          <table className="w-full text-lg">
-            <tbody>
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Tonnellaggio richiesto</td>
-                <td className="py-3 text-right">
-                  {result.tonnellaggioRequired} t
-                </td>
-              </tr>
-
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Pressione stimata</td>
-                <td className="py-3 text-right">
-                  {result.pressureBar} bar
-                </td>
-              </tr>
-
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Diametro vite</td>
-                <td className="py-3 text-right">
-                  {result.screwDiameterMm} mm
-                </td>
-              </tr>
-
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Portata iniezione</td>
-                <td className="py-3 text-right">
-                  {result.injectionFlowCm3s} cm³/s
-                </td>
-              </tr>
-
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Switchover</td>
-                <td className="py-3 text-right">
-                  {result.vpSwitchVolumeCm3?.toFixed(2) ?? '--'} cm³ iniettati
-                  {typeof result.switchoverMs === 'number' && ` · tempo indicativo ${result.switchoverMs} ms`}
-                </td>
-              </tr>
-
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Injection time</td>
-                <td className="py-3 text-right">
-                  {result.times?.injectionMs ?? 0} ms
-                </td>
-              </tr>
-
-              <tr className="border-b">
-                <td className="py-3 font-semibold">Cooling time</td>
-                <td className="py-3 text-right">
-                  {result.times?.coolingMs ?? 0} ms
-                </td>
-              </tr>
-
-              <tr>
-                <td className="py-3 font-semibold">Temp. suggerita (raff.)</td>
-                <td className="py-3 text-right">
-                  {result.cooling?.suggestedC ?? "--"} °C
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="bg-white p-4 shadow rounded-xl max-w-5xl sm:p-6">
+          <OperatorRecipePanel result={result} />
           <div className="mt-4">
             <ExportRecipeButton />
           </div>
@@ -260,7 +201,7 @@ export default function ParametriPage() {
           <div>Switchover: {baselineProfiles.switchover != null ? `${baselineProfiles.switchover}%` : '—'}</div>
         </div>
       )}
-      <ProcessProfilesPanel result={result} />
+
 
       {/* Similar cases: minimal dev seed + panel */}
       {/* Similar cases panel - prefer a snapshot from an imported case when available so imported cases surface automatically */}

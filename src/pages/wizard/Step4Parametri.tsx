@@ -23,8 +23,8 @@ export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
             <div className="text-lg">{data.pressureBar ?? '--'}</div>
           </div>
           <div>
-            <div className="text-sm text-blue-800">Velocità (mm/s)</div>
-            <div className="text-lg">{data.velocityMmPerS ?? '--'}</div>
+            <div className="text-sm text-blue-800">Portata iniezione (cm³/s)</div>
+            <div className="text-lg">{data.injectionFlowCm3s ?? '--'}</div>
           </div>
           <div>
             <div className="text-sm text-blue-800">Commutazione V/P (cm³ iniettati)</div>
@@ -34,7 +34,7 @@ export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
           </div>
           <div>
             <div className="text-sm text-blue-800">Tonnellaggio richiesto</div>
-            <div className="text-lg">{data.tonnellaggioRequired ?? '--'}</div>
+            <div className="text-lg">{data.tonnellaggioRequired ?? '--'} t</div>
           </div>
           <div className="col-span-2">
             <div className="text-sm text-blue-800">Tempi (ms)</div>

@@ -141,7 +141,7 @@ export default function ParametriPage() {
               <tr className="border-b">
                 <td className="py-3 font-semibold">Tonnellaggio richiesto</td>
                 <td className="py-3 text-right">
-                  {result.tonnellaggioRequired} kN
+                  {result.tonnellaggioRequired} t
                 </td>
               </tr>
 
@@ -160,9 +160,9 @@ export default function ParametriPage() {
               </tr>
 
               <tr className="border-b">
-                <td className="py-3 font-semibold">Velocità (vite)</td>
+                <td className="py-3 font-semibold">Portata iniezione</td>
                 <td className="py-3 text-right">
-                  {result.velocityMmPerS} mm/s
+                  {result.injectionFlowCm3s} cm³/s
                 </td>
               </tr>
 

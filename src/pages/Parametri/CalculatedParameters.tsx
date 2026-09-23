@@ -37,7 +37,11 @@ export default function CalculatedParameters({ result }: { result?: any }) {
   const tempoDosatura = results.tempoDosatura ?? results.plastificationTimeSec ?? "--";
 
   const tonnellaggio = results.tonnellaggio ?? results.requiredTonnage_t ?? "--";
-  const tonnellaggioPressa = results.tonnellaggioPressa ?? results.clampForceTon ?? "--";
+  const tonnellaggioPressa = results.tonnellaggioPressa != null
+    ? `${results.tonnellaggioPressa} kN nominali`
+    : results.clampForceTon != null
+      ? `${results.clampForceTon} t nominali`
+      : "--";
 
   const temperature = results.temperature ?? {};
   const suggerimenti = results.suggerimenti ?? results.suggestions ?? [];
@@ -56,7 +60,7 @@ export default function CalculatedParameters({ result }: { result?: any }) {
 
       {/* INIEZIONE */}
       <Section title="Iniezione">
-        <Row label="Velocità iniezione" value={`${velIniezione} cm³/s`} />
+        <Row label="Portata iniezione" value={`${velIniezione} cm³/s`} />
         <Row label="Pressione iniezione" value={`${pressioneIniezione} bar`} />
         <Row label="Fill Time" value={`${fillTime} s`} />
       </Section>
@@ -80,15 +84,15 @@ export default function CalculatedParameters({ result }: { result?: any }) {
 
       {/* PLASTIFICAZIONE */}
       <Section title="Plastificazione">
-        <Row label="Velocità vite" value={`${velocitaVite ?? "-"} mm/s`} />
+        <Row label="Velocità vite" value={`${velocitaVite ?? "-"} giri/min`} />
         <Row label="Contropressione" value={`${contropressione ?? "-"} bar`} />
         <Row label="Tempo dosatura" value={`${tempoDosatura ?? "-"} s`} />
       </Section>
 
       {/* TONNELLAGGIO */}
       <Section title="Tonnellaggio">
-        <Row label="Richiesto" value={`${tonnellaggio} kN`} />
-        <Row label="Disponibile (pressa)" value={`${tonnellaggioPressa ?? "-"} kN`} />
+        <Row label="Richiesto" value={`${tonnellaggio} t`} />
+        <Row label="Disponibile (pressa)" value={tonnellaggioPressa} />
       </Section>
 
       {/* TEMPERATURE */}

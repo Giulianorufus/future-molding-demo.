@@ -36,7 +36,7 @@ export type CalculationResult = {
   vpSwitchPercentOfShot: number | null
   pressureBar: number
   screwDiameterMm: number
-  velocityMmPerS: number
+  injectionFlowCm3s: number
   switchoverMs: number | null
   times: { injectionMs: number; coolingMs: number }
   cooling: { suggestedC: number }
@@ -96,7 +96,7 @@ export function calcolaParametri(input: CalculationInput, _context?: CalcContext
     vpSwitchPercentOfShot: typeof out.vpSwitchPercentOfShot === 'number' ? out.vpSwitchPercentOfShot : null,
     pressureBar: Math.round(toFinite(out.pressioneIniezione, 0)),
     screwDiameterMm: screw,
-    velocityMmPerS: Math.round(flowCm3s),
+    injectionFlowCm3s: Math.round(flowCm3s),
     switchoverMs,
     times: {
       injectionMs: Math.max(1, Math.round(fillSec * 1000)),

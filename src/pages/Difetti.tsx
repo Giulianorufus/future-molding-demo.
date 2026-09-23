@@ -54,7 +54,7 @@ export default function DifettiPage() {
         severity: selectedSeverity,
         processParameters: {
           pressureBar: result.pressureBar,
-          velocityMmPerS: result.velocityMmPerS,
+          injectionFlowCm3s: result.injectionFlowCm3s,
           switchoverMs: result.switchoverMs,
         },
       },
@@ -162,7 +162,7 @@ export default function DifettiPage() {
             <div>
               <strong>Iniezione:</strong>
               <br />
-              Velocità: {result.velocityMmPerS ?? "--"} mm/s
+              Portata: {result.injectionFlowCm3s ?? "--"} cm³/s
               <br />
               Pressione: {result.pressureBar ?? "--"} bar
             </div>
@@ -184,7 +184,7 @@ export default function DifettiPage() {
             <div>
               <strong>Tonnellaggio:</strong>
               <br />
-              Richiesto: {result.tonnellaggioRequired ?? "--"} kN
+              Richiesto: {result.tonnellaggioRequired ?? "--"} t
             </div>
           </div>
         )}

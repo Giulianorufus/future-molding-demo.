@@ -27,8 +27,10 @@ export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
             <div className="text-lg">{data.velocityMmPerS ?? '--'}</div>
           </div>
           <div>
-            <div className="text-sm text-blue-800">Switchover (ms)</div>
-            <div className="text-lg">{data.switchoverMs ?? '--'}</div>
+            <div className="text-sm text-blue-800">Commutazione V/P (cm³ iniettati)</div>
+            <div className="text-lg">{data.vpSwitchVolumeCm3?.toFixed(2) ?? 'Non disponibile'} / {data.shotVolumeCm3?.toFixed(2) ?? '--'} cm³</div>
+            {typeof data.vpSwitchPercentOfShot === 'number' && <div className="text-xs text-gray-600">{data.vpSwitchPercentOfShot.toFixed(1)}% della dose · tempo indicativo {data.switchoverMs ?? '--'} ms</div>}
+            {data.vpSwitchVolumeCm3 == null && <div className="text-xs text-amber-700">Conferma volume del pezzo, numero di cavità e canali prima di usare V/P.</div>}
           </div>
           <div>
             <div className="text-sm text-blue-800">Tonnellaggio richiesto</div>

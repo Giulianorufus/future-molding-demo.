@@ -169,7 +169,8 @@ export default function ParametriPage() {
               <tr className="border-b">
                 <td className="py-3 font-semibold">Switchover</td>
                 <td className="py-3 text-right">
-                  {result.switchoverMs} ms
+                  {result.vpSwitchVolumeCm3?.toFixed(2) ?? '--'} cm³ iniettati
+                  {typeof result.switchoverMs === 'number' && ` · tempo indicativo ${result.switchoverMs} ms`}
                 </td>
               </tr>
 
@@ -281,4 +282,3 @@ export default function ParametriPage() {
     </div>
   );
 }
-

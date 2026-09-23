@@ -32,10 +32,12 @@ export type CalculationInput = {
 export type CalculationResult = {
   tonnellaggioRequired: number
   shotVolumeCm3: number
+  vpSwitchVolumeCm3: number | null
+  vpSwitchPercentOfShot: number | null
   pressureBar: number
   screwDiameterMm: number
   velocityMmPerS: number
-  switchoverMs: number
+  switchoverMs: number | null
   times: { injectionMs: number; coolingMs: number }
   cooling: { suggestedC: number }
   unified?: unknown
@@ -84,13 +86,14 @@ export function calcolaParametri(input: CalculationInput, _context?: CalcContext
   const out: any = calculateUnified(unifiedInput)
   const fillSec = Math.max(0, toFinite(out.fillTime, 0))
   const coolingSec = Math.max(0, toFinite(out.coolingTime, 0))
-  const vpCm3 = Math.max(0, toFinite(out.vp, 0))
   const flowCm3s = Math.max(0, toFinite(out.velIniezione, 0))
-  const switchoverMs = flowCm3s > 0 ? Math.round((vpCm3 / flowCm3s) * 1000) : 0
+  const switchoverMs = typeof out.vpTimeMs === 'number' && Number.isFinite(out.vpTimeMs) ? out.vpTimeMs : null
 
   return {
     tonnellaggioRequired: Number(toFinite(out.tonnellaggio, 0).toFixed(1)),
     shotVolumeCm3: toFinite(out.shotVolumeCm3, input.shotVolumeCm3 ?? input.volumeCm3),
+    vpSwitchVolumeCm3: typeof out.vpSwitchVolumeCm3 === 'number' ? out.vpSwitchVolumeCm3 : null,
+    vpSwitchPercentOfShot: typeof out.vpSwitchPercentOfShot === 'number' ? out.vpSwitchPercentOfShot : null,
     pressureBar: Math.round(toFinite(out.pressioneIniezione, 0)),
     screwDiameterMm: screw,
     velocityMmPerS: Math.round(flowCm3s),

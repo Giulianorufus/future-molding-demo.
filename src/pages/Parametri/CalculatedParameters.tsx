@@ -62,8 +62,8 @@ export default function CalculatedParameters({ result }: { result?: any }) {
       </Section>
 
       {/* VP */}
-      <Section title="Commutazione (VP Volume)">
-        <Row label="VP volume" value={`${vp} cm³`} />
+      <Section title="Commutazione V/P">
+        <Row label="Volume iniettato alla commutazione" value={`${vp} cm³`} />
         <Row label="Pressione VP" value={`${pressioneIniezione} bar`} />
       </Section>
 
@@ -135,4 +135,3 @@ function Row({ label, value }: any) {
     </div>
   );
 }
-

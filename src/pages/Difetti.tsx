@@ -170,7 +170,7 @@ export default function DifettiPage() {
             <div>
               <strong>Commutazione:</strong>
               <br />
-              VP: {result.switchoverMs ?? "--"} ms
+              V/P: {result.vpSwitchVolumeCm3?.toFixed(2) ?? "--"} cm³ iniettati
             </div>
 
             <div>

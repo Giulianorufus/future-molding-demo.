@@ -75,6 +75,10 @@ describe('calculateParameters basic scenarios', () => {
         volumeCm3: 4.326812032516769,
       });
       expect(out.shotVolumeCm3).toBe(19.307248);
+      expect(out.vpSwitchVolumeCm3).toBeGreaterThan(2);
+      expect(out.vpSwitchVolumeCm3).toBeLessThan(19.307248);
+      expect(out.vpTimeMs).toBeGreaterThan(0);
+      expect(out.vp).toBe(out.vpSwitchVolumeCm3);
       expect(out.totalPartsVolumeCm3).toBeCloseTo(17.307248130067076, 12);
       const wizardOutput = calculateWizard({
         volumeCm3: 4.326812032516769,
@@ -87,8 +91,23 @@ describe('calculateParameters basic scenarios', () => {
         material: { id: 'PP-HOMO' },
       });
       expect(wizardOutput.shotVolumeCm3).toBe(19.307248);
+      expect(wizardOutput.vpSwitchVolumeCm3).toBe(out.vpSwitchVolumeCm3);
+      expect(wizardOutput.switchoverMs).toBeGreaterThan(0);
     } finally {
       useDrawingStore.getState().reset();
     }
+  });
+
+  test('does not invent a V/P setpoint when mold configuration is incomplete', () => {
+    useDrawingStore.getState().reset();
+    const result = calculateParameters({
+      material: { ...dummyMaterial, family: 'PP' },
+      press: dummyPress,
+      screwDiameter: 22,
+      volumeCm3: 4.326812032516769,
+    });
+    expect(result.vpSwitchVolumeCm3).toBeNull();
+    expect(result.vpTimeMs).toBeNull();
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/Commutazione V\/P non disponibile/)]));
   });
 });

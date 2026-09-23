@@ -16,6 +16,8 @@ export type PackingStep = {
 
 export type ProfileBuildInput = {
   // pezzo
+  totalPartsVolumeCm3?: number;
+  runnerVolumeCm3?: number;
   thicknessAvg_mm?: number;
   thicknessMin_mm?: number;
   thicknessMax_mm?: number;

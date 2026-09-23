@@ -2,7 +2,7 @@ import path from 'path'
 import { Page } from '@playwright/test'
 
 export type InjectOptions = {
-  drawing?: { glbUrl?: string; previewUrl?: string; volumeCm3?: number }
+  drawing?: { glbUrl?: string; viewerUrl?: string; previewUrl?: string; volumeCm3?: number }
   pressId?: string
   materialId?: string
 }
@@ -22,7 +22,7 @@ export async function serveFixture(page: Page, fixtureRelativePath: string, rout
 
 export async function injectStores(page: Page, opts: InjectOptions = {}) {
   const payload = {
-    drawing: opts.drawing ?? { glbUrl: '/__playwright_fixture__', previewUrl: '/__playwright_fixture__', volumeCm3: 12 },
+    drawing: opts.drawing ?? { glbUrl: '/__playwright_fixture__', viewerUrl: '/__playwright_fixture__', previewUrl: '/__playwright_fixture__', volumeCm3: 12 },
     pressId: opts.pressId ?? null,
     materialId: opts.materialId ?? null,
   }

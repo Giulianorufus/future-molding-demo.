@@ -1,71 +1,42 @@
-# Forma Facile — Parametro (locale)
+# Future Molding
 
-Progetto per calcolo parametri di stampaggio e preview CAD, preparato per uso e sviluppo locale.
+Applicazione locale per impostare un ciclo di stampaggio a iniezione a partire dal CAD di un singolo pezzo.
 
-Requisiti
-- Node.js 18+ e npm
+## Requisiti
 
-Quick start
+- Node.js 20+
+- npm
+
+## Avvio
+
 ```powershell
-git checkout feature/parametri-anteprima
-````markdown
-# Forma Facile — Parametro (locale)
-
-Progetto per calcolo parametri di stampaggio e preview CAD, preparato per uso e sviluppo locale.
-
-Requisiti
-- Node.js 18+ e npm
-
-Quick start
-```powershell
-git checkout feature/parametri-anteprima
 npm ci
-npm run dev
+npm run dev:safe
 ```
 
-Eseguire i test
+L'applicazione e' disponibile su `http://127.0.0.1:3000`.
+
+## Flusso operatore
+
+1. Apri il Wizard e carica un disegno STEP/IGES, GLB o STL.
+2. Configura stampo: cavita', sistema di alimentazione e, per canale freddo, canali/materozza.
+3. Seleziona pressa, modello e diametro vite.
+4. Seleziona il materiale e calcola i parametri.
+5. Nella schermata Parametri puoi consultare la sintesi, selezionare gate nella simulazione qualitativa e usare **Esporta ricetta** per generare JSON, CSV e PDF.
+
+Il CAD descrive un pezzo singolo: cavita' e canali sono configurazione dello stampo. La simulazione e' qualitativa e non sostituisce un solver Moldflow validato.
+
+## Verifiche
+
 ```powershell
-npm test
-# oppure eseguire singolo test
-npx jest src/services/__tests__/calculationEngine.test.ts --runInBand
+npm run check
+npm run typecheck
+npm run build
+npm run test:cad:strict
+npm run test:e2e
 ```
 
-Uso offline
-- Il progetto è pensato per essere eseguito localmente; non dipende da servizi esterni per funzionare in modalità base.
-- Cartelle come `public/lovable-uploads` erano usate per demo remota e possono essere svuotate o rimosse.
-
-Supporto
-- Se vuoi che il progetto sia completamente privo di tracking remoto, rimuovi il remote Git (es.: `git remote remove origin`) o rimuovi la cartella `.git` per scollegare la cronologia.
-
-Note
-- Tutti i riferimenti a servizi di terze parti per demo sono stati rimossi dalla documentazione e dai commenti nel codice. Il codice rimane compatibile con flussi locali e può essere adattato per integrazioni future.
-
-Licenza
-- Vedi `LICENSE` o aggiungi una se desideri un rilascio ufficiale.
-
----
-
-# FUTURE MOLDING — FLUSSO UFFICIALE
-
-1. Carica file 3D (STL, STEP, IGES, OBJ, GLB)
-2. CAD Loader → converte → mesh unificata
-3. CAD Analyzer → estrae:
-	- volume pezzo
-	- volume materozza
-	- area proiettata
-	- spessore medio
-4. store.parametri.setGeometry(...)
-5. Operatore seleziona:
-	- pressa
-	- modello pressa
-	- materiale
-6. Premi "Calcola parametri"
-7. calcEngine → produce parametri reali
-8. UI mostra pagina:
-	CalculatedParameters
-9. Se difetto → pagina Difetti
-10. DefectAI → ricalcolo automatico
-11. Fine.
+L'E2E del Wizard usa `public/sample-drawings/Frutto (1).stp` e verifica caricamento STEP, metriche CAD, scelta stampo/pressa/materiale e calcolo parametri.
 
 ## CAD tests (OCCT integration)
 
@@ -110,13 +81,13 @@ STL reader is not guaranteed (many builds do not expose ReadStlFile), therefore 
 
 ## Export ricetta (JSON / CSV / PDF)
 
-Dalla pagina **Parametri** è disponibile il bottone **Export recipe** (compare dopo il calcolo).
+Dalla pagina **Parametri** è disponibile il bottone **Esporta ricetta** dopo il calcolo.
 
-Genera tre file deterministici:
+Genera tre file con lo snapshot corrente di CAD, stampo, pressa, materiale e calcolo:
 
-- `recipe.sample.json` — snapshot completo del calcolo (meta, input, output, warnings/assumptions).
-- `recipe.sample.csv` — estratto con colonne principali (separatore `;`).
-- `recipe.sample.pdf` — versione stampabile sintetica.
+- `recipe.json` — snapshot completo del calcolo (meta, input, output, warnings/assumptions).
+- `recipe.csv` — estratto con colonne principali (separatore `;`).
+- `recipe.pdf` — versione stampabile sintetica.
 
 Comandi utili:
 
@@ -143,5 +114,3 @@ I sample generati sono in `samples/`. File temporanei di debug vengono scritti i
 Vedi la documentazione operativa: [docs/KB.md](docs/KB.md) — contiene il workflow per popolare la KB locale (`data/kb/cases.json`) e generare la `public/policy/recommended_by_recipeFingerprint.json`.
 
 - Dettagli e workflow KB: vedi `docs/KB.md` (sezione Publish policy)
-
-````

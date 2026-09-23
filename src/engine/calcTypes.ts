@@ -1,4 +1,5 @@
 // Tipi ausiliari per calcoli estesi del motore di calcolo
+import type { InjectionStep } from "./profiles/profileTypes";
 export interface GeometrySummary {
   volumePezzo_cm3?: number | null;
   volumeMaterozza_cm3?: number | null;
@@ -85,6 +86,7 @@ export interface TemperatureOutput {
 
 export interface CalcOutput {
   // Geometria
+  shotVolumeCm3: number;
   volumePezzo: number;
   volumeMaterozza: number;
   volumeTotale: number;
@@ -97,7 +99,12 @@ export interface CalcOutput {
   fillTime: number;
 
   // VP
-  vp: number;
+  vp: number | null;
+  vpSwitchVolumeCm3?: number | null;
+  vpSwitchPercentOfShot?: number | null;
+  vpTimeMs?: number | null;
+  injectionProfile?: InjectionStep[];
+  switchover_volumePercent?: number | null;
 
   // Pack
   packPressione: number;

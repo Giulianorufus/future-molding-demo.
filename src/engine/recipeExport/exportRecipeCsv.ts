@@ -20,6 +20,7 @@ export function exportRecipeCsv(snapshot: RecipeSnapshot): string {
     "press_screw_mm",
     "material_id",
     "material_name",
+    "shotVolumeCm3",
     "warnings",
     "assumptions",
   ];
@@ -37,6 +38,7 @@ export function exportRecipeCsv(snapshot: RecipeSnapshot): string {
     snapshot.press?.screwDiameter_mm ? fmtNum(snapshot.press.screwDiameter_mm) : "",
     snapshot.material?.id ?? "",
     snapshot.material?.name ?? "",
+    snapshot.output?.shotVolumeCm3 ?? snapshot.input?.shotVolumeCm3 ?? "",
     (snapshot.warnings || []).join('|'),
     (snapshot.assumptions || []).join('|'),
   ];

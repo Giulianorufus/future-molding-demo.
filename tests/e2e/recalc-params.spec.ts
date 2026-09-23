@@ -15,5 +15,6 @@ test('selezione pressa/materiale/vite → calcolo parametri', async ({ page }) =
   // Verify Parametri page shows the results
   await page.goto('/#/parametri')
   await expect(page.getByRole('heading', { name: 'Sintesi calcolo' })).toBeVisible()
-  await expect(page.getByText('Tonnellaggio richiesto')).toBeVisible()
+  await expect(page.getByText('Chiusura richiesta')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Ricetta iniziale operatore' })).toBeVisible()
 })

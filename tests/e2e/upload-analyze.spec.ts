@@ -31,6 +31,7 @@ test('Wizard: STEP reale -> stampo, pressa, materiale -> parametri', async ({ pa
   await page.getByRole('button', { name: 'Avanti', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: 'Parametri calcolati' })).toBeVisible();
-  await expect(page.getByText('Dose totale stampata:')).toContainText('Dose totale stampata:');
-  await expect(page.getByText('19.31 cm³', { exact: true })).toBeVisible();
+  await expect(page.getByText('Volume dosaggio · dose totale')).toBeVisible();
+  await expect(page.getByText('19,307248 cm³', { exact: true })).toBeVisible();
+  await expect(page.getByText('18,874567 cm³ iniettati', { exact: true })).toBeVisible();
 });

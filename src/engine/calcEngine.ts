@@ -2,7 +2,7 @@ import { PressProfile } from "./pressProfiles";
 import { MaterialInfo } from "./materialData";
 import { recommendedClampForceTon } from "./clampForce";
 import { computeClampForce } from "../lib/clampForce";
-import { evaluateClampCapacity } from "../lib/clampCapacity";
+import { CLAMP_USABLE_FRACTION, evaluateClampCapacity } from "../lib/clampCapacity";
 import { materialCatalog, getMaterialInput } from "../data/materialCatalog";
 import type { MaterialProfile } from "@/types/material";
 import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
@@ -12,13 +12,13 @@ import { applyPressLimits } from "../lib/pressLimits";
 import { parseOverride } from "../utils/overrides";
 import { enforceSafety } from "./safetyChecks";
 import { useDrawingStore } from "../stores/drawingStore";
-import type { GeometrySummary, PackResult, VPResult, TonnageResult, TemperatureSuggestion, CalcSuggestions } from "./calcTypes";
+import type { GeometrySummary, PackResult, TonnageResult, TemperatureSuggestion, CalcSuggestions } from "./calcTypes";
+import { buildInjectionProfile as buildVolumeInjectionProfile } from "./profiles/buildInjectionProfile";
 import type { CalcInput as UserCalcInput, CalcOutput as UserCalcOutput, TemperatureOutput as UserTemperatureOutput } from "./calcTypes";
 import {
   calcInjectionSpeed as hCalcInjectionSpeed,
   calcInjectionPressure as hCalcInjectionPressure,
   calcFillTime as hCalcFillTime,
-  calcVP as hCalcVP,
   calcPack as hCalcPack,
   calcCoolingTime as hCalcCoolingTime,
   calcTonnellaggio as hCalcTonnellaggio,
@@ -56,7 +56,7 @@ export interface CalcResult {
   cavityCount?: number;
   totalPartsVolumeCm3?: number;
   projectedAreaTotalCm2?: number;
-  vpVolumeCm3?: number;
+  vpVolumeCm3?: number | null;
   packTimeSec?: number;
   plastificationTimeSec?: number;
 
@@ -64,8 +64,11 @@ export interface CalcResult {
   suggestedInjectionSpeedCm3s?: number;
   computedInjectionPressure_bar?: number;
   fillTime_s?: number;
-  vpSwitchVolumeCm3?: number;
-  vpComputed_cm3?: number;
+  vpSwitchVolumeCm3?: number | null;
+  vpSwitchPercentOfShot?: number | null;
+  vpPartFillPercent?: number | null;
+  vpTimeMs?: number | null;
+  vpComputed_cm3?: number | null;
   packPressureBar?: number;
   packTimeComputedSec?: number;
   coolingFromThicknessSec?: number;
@@ -78,7 +81,7 @@ export interface CalcResult {
   velIniezione?: number;
   pressioneIniezione?: number;
   fillTime?: number;
-  vp?: number;
+  vp?: number | null;
   packPressione?: number;
   packTempo?: number;
   coolingTime?: number;
@@ -296,13 +299,20 @@ export function calculateParameters(input: CalcInput): CalcResult {
   // No invented 5% runner. Hot runner contributes no cold-runner waste here;
   // cold runner uses only the operator-provided value; unknown stays provisional.
   const runnerVol = feedSystem === 'cold' ? (configuredRunnerVol ?? 0) : 0;
-  const totalShot = Math.round((totalPartsVol + runnerVol) * 100) / 100;
+  // Preserve the CAD regression precision; presentation may round separately.
+  const totalShot = Math.round((totalPartsVol + runnerVol) * 1_000_000) / 1_000_000;
   
   const warnings: string[] = [];
   if (!(typeof projArea === 'number' && projArea > 0)) warnings.push('Area proiettata non disponibile: forza di chiusura provvisoria');
   if (!cavityCountConfirmed) warnings.push('Numero cavità non confermato: dose e forza di chiusura sono provvisorie');
   if (feedSystem === 'unknown') warnings.push('Sistema di alimentazione non noto: dose e forza di chiusura sono provvisorie');
   if (feedSystem === 'cold' && configuredRunnerVol === null) warnings.push('Volume materozza/canali non inserito: dose calcolata sui soli pezzi');
+  const vpGeometryConfirmed = cavityCountConfirmed && Number.isInteger(ds.cavityCount) && ds.cavityCount > 0 &&
+    feedSystem !== 'unknown' &&
+    (feedSystem !== 'cold' || (configuredRunnerVol !== null && Number.isFinite(configuredRunnerVol))) &&
+    ((typeof input.volumeCm3 === 'number' && Number.isFinite(input.volumeCm3) && input.volumeCm3 > 0) ||
+      (typeof ds.volumeCm3 === 'number' && Number.isFinite(ds.volumeCm3) && ds.volumeCm3 > 0));
+  if (!vpGeometryConfirmed) warnings.push('Commutazione V/P non disponibile: confermare volume pezzo, cavità e canali dello stampo');
     const ep: any = effectivePress as any;
     const maxSpeed = ep?.maxInjectionSpeed_cm3_s ?? ep?.maxInjectionSpeed_cm3s ?? ep?.maxSpeedCm3s ?? ep?.maxSpeed_cm3s ?? ep?.maxSpeedCm3s;
     if (maxSpeed && injectionSpeedCm3s > maxSpeed) warnings.push(`Velocità iniezione ${injectionSpeedCm3s} cm³/s > max pressa ${maxSpeed} cm³/s`);
@@ -310,7 +320,8 @@ export function calculateParameters(input: CalcInput): CalcResult {
     if (maxPressure && holdingPressureBar > maxPressure) warnings.push(`Pressione tenuta ${holdingPressureBar} bar > max pressa ${maxPressure} bar`);
     const shotCap = ep?.maxShotVolume_cm3 ?? ep?.shotVolumeCm3 ?? ep?.maxShotVolumeCm3;
     if (shotCap && totalShot > shotCap) warnings.push(`Shot stimato ${totalShot} cm³ > capacità vite pressa ${shotCap} cm³`);
-    if (clampForceTon > (ep?.clampForceTon || 0)) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità pressa ${ep?.clampForceTon} ton`);
+    const usableClampTon = (ep?.clampForceTon || 0) * CLAMP_USABLE_FRACTION;
+    if (usableClampTon > 0 && clampForceTon > usableClampTon) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità utilizzabile pressa ${usableClampTon.toFixed(1)} ton (85% nominale)`);
 
   // Apply pressure multiplier (after holdingPressureBar initialization and overrides)
   try {
@@ -330,7 +341,6 @@ export function calculateParameters(input: CalcInput): CalcResult {
 
   // suggestions will be computed from the final warnings later
 
-  const vpVolume = Math.max(1, Math.round(pieceVol * 0.95));
   const packTime = Math.max(1, Math.round((pieceVol || 1) * 0.5));
   const plastTime = Math.max(1, Math.round(totalShot / Math.max(1, injectionSpeedCm3s)));
 
@@ -358,15 +368,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
       // adjust suggested injection speed to the capped flow
       suggestedInjectionSpeedCm3s = cappedFlow;
 
-      // if we have a screw diameter, convert capped flow to screw linear speed and rpm
-      const sd = Number(screwDiameter || (input as any).screwDiameter || 0) || 0;
-      if (sd > 0) {
-        const screwArea_mm2 = Math.PI * (sd * sd) / 4; // mm^2
-        const screwLinear_mm_s = (cappedFlow * 1000) / Math.max(1e-6, screwArea_mm2); // mm3/s -> mm/s
-        const newRpm = Math.round((screwLinear_mm_s * 60) / (Math.PI * sd));
-        // replace screwRpm with the capped value if it's lower
-        if (typeof newRpm === 'number' && Number.isFinite(newRpm)) screwRpm = newRpm;
-      }
+      // Il limite di portata in iniezione non determina i giri di plastificazione.
     }
   } catch (e) {
     // non-blocking: keep original values on error
@@ -378,10 +380,26 @@ export function calculateParameters(input: CalcInput): CalcResult {
     }
   } catch (_) {}
   
-  const vpRes: VPResult = { vpVolumeCm3: vpVolume, switchVolumeCm3: Math.max(1, Math.round((pieceVolFromStore || pieceVol) * 0.6)) };
+  const targetFlowCm3s = Math.max(0, suggestedInjectionSpeedCm3s);
+  const maxFlowCm3s = press?.maxSpeedCm3s && press.maxSpeedCm3s > 0 ? press.maxSpeedCm3s : targetFlowCm3s;
+  const peakPressureBar = Math.max(0, computedInjectionPressure_bar);
+  const maxPressureBar = press?.maxPressureBar && press.maxPressureBar > 0 ? press.maxPressureBar : peakPressureBar;
+  const volumeProfile = buildVolumeInjectionProfile({
+    materialId: material.id,
+    thicknessAvg_mm: thickness ?? undefined,
+    shotUtilization: press?.shotVolumeCm3 && press.shotVolumeCm3 > 0 ? totalShot / press.shotVolumeCm3 : undefined,
+    speedUtilization: press?.maxSpeedCm3s && press.maxSpeedCm3s > 0 ? targetFlowCm3s / press.maxSpeedCm3s : undefined,
+    pressureUtilization: press?.maxPressureBar && press.maxPressureBar > 0 ? peakPressureBar / press.maxPressureBar : undefined,
+    targetInjectionSpeed_cm3_s: targetFlowCm3s,
+    maxInjectionSpeed_cm3_s: maxFlowCm3s,
+    peakInjectionPressure_bar: peakPressureBar,
+    maxInjectionPressure_bar: maxPressureBar,
+    totalPartsVolumeCm3: vpGeometryConfirmed ? totalPartsVol : undefined,
+    runnerVolumeCm3: vpGeometryConfirmed ? runnerVol : undefined,
+  });
   const packRes: PackResult = { packPressureBar: Math.round((material as any).density_g_cm3 ?? 1 * Math.max(20, Math.min(200, (pieceVolFromStore || pieceVol) * 0.5))), packTimeSec: packTime };
   const coolingFromThickness = thickness ? Math.round((material.crystalline ? 22 : 18) * (1 + Math.pow((thickness / 3), 1.4) * 0.25)) : (material.crystalline ? 22 : 18);
-  const tonnage = (() => { const area = (projAreaFromStore || projArea || 10); const required = Math.max(1, Math.round(area * 0.01 * 100) / 100); const pressAdequate = (press?.clampForceTon || 0) >= required; return { requiredTonnage_t: required, pressAdequate }; })();
+  const tonnage = { requiredTonnage_t: clampForceTon, pressAdequate: (press?.clampForceTon || 0) * CLAMP_USABLE_FRACTION >= clampForceTon };
   const tempSug: TemperatureSuggestion = { suggestedMeltTempC: material.meltMin, suggestedMoldTempC: finalMoldTemp };
   const suggestions: CalcSuggestions = { notes: warnings.slice(0, 3) };
 
@@ -400,7 +418,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
   }
   const pressioneIniezione = hCalcInjectionPressure(Number(geom_area) || 0, velIniezione, material as any);
   const fillTime = hCalcFillTime(Number(geom_vol) || 0, velIniezione);
-  const vp = hCalcVP(Number(geom_vol) || 0, material as any);
+  const vp = volumeProfile.switchover_volumeCm3;
   const pack = hCalcPack(material as any, Number(geom_vol) || 0);
   const cooling = hCalcCoolingTime(Number(geom_spess) || 0);
   const tonnellaggio = hCalcTonnellaggio(Number(geom_area) || 0, pressioneIniezione);
@@ -422,14 +440,19 @@ export function calculateParameters(input: CalcInput): CalcResult {
     totalPartsVolumeCm3: totalPartsVol,
     projectedAreaTotalCm2: projArea,
     runnerVolumeCm3: runnerVol,
-    vpVolumeCm3: vpVolume,
+    vpVolumeCm3: vp,
     packTimeSec: packTime,
     plastificationTimeSec: plastTime,
     suggestedInjectionSpeedCm3s,
     computedInjectionPressure_bar,
     fillTime_s,
-    vpSwitchVolumeCm3: vpRes.switchVolumeCm3,
-    vpComputed_cm3: vpRes.vpVolumeCm3,
+    vpSwitchVolumeCm3: vp,
+    vpComputed_cm3: vp,
+    vpSwitchPercentOfShot: vp === null ? null : volumeProfile.switchover_volumePercent,
+    vpPartFillPercent: vp === null ? null : volumeProfile.switchover_partPercent,
+    vpTimeMs: volumeProfile.switchover_timeMs,
+    injectionProfile: { steps: volumeProfile.injectionProfile },
+    switchover_volumePercent: vp === null ? undefined : volumeProfile.switchover_volumePercent,
     packPressureBar: packRes.packPressureBar,
     packTimeComputedSec: packRes.packTimeSec,
     coolingFromThicknessSec: coolingFromThickness,
@@ -657,6 +680,7 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
 
   const out: any = {
     volumePezzo: geometry.volumePezzo_cm3,
+    shotVolumeCm3: internal.shotVolumeCm3,
     volumeMaterozza: geometry.volumeMaterozza_cm3,
     volumeTotale: geometry.volumeTotale_cm3,
     areaProiettata: geometry.areaProiettata_cm2,
@@ -666,7 +690,12 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
     pressioneIniezione: internal.pressioneIniezione ?? internal.computedInjectionPressure_bar ?? internal.holdingPressureBar,
     fillTime: internal.fillTime ?? internal.fillTime_s,
 
-    vp: internal.vp ?? internal.vpComputed_cm3 ?? internal.vpVolumeCm3,
+    vp: internal.vpSwitchVolumeCm3 ?? null,
+    vpSwitchVolumeCm3: internal.vpSwitchVolumeCm3 ?? null,
+    vpSwitchPercentOfShot: internal.vpSwitchPercentOfShot ?? null,
+    vpTimeMs: internal.vpTimeMs ?? null,
+    switchover_volumePercent: internal.vpSwitchPercentOfShot ?? null,
+    injectionProfile: internal.injectionProfile?.steps,
 
     packPressione: internal.packPressione ?? internal.packPressureBar ?? internal.packPressureBar,
     packTempo: internal.packTempo ?? internal.packTimeComputedSec ?? internal.packTimeSec,
@@ -719,4 +748,3 @@ export async function computeCalcEngineHash() {
     return '';
   }
 }
-

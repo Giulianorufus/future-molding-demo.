@@ -41,9 +41,9 @@ export async function exportRecipePdf(snapshot: RecipeSnapshot): Promise<Uint8Ar
   page.drawText('Key Outputs', { x: 40, y, size: 12, font });
   y -= 14;
   const out = snapshot.output || {};
-  const keys = ['injectionSpeedCm3s', 'holdingPressureBar', 'clampForceTon', 'coolingTimeSec'];
+  const keys = ['shotVolumeCm3', 'injectionSpeedCm3s', 'holdingPressureBar', 'clampForceTon', 'coolingTimeSec'];
   for (const k of keys) {
-    page.drawText(`${k}: ${String((out as any)[k] ?? '')}`, { x: 60, y, size: textSize, font });
+    page.drawText(`${k}: ${String(out[k] ?? (k === 'shotVolumeCm3' ? snapshot.input?.shotVolumeCm3 : '') ?? '')}`, { x: 60, y, size: textSize, font });
     y -= 12;
   }
 

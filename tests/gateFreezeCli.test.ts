@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 describe("gate freeze CLI", () => {
   test("produces recommendations.json/csv", () => {
@@ -10,7 +10,7 @@ describe("gate freeze CLI", () => {
 
     fs.rmSync(outDir, { recursive: true, force: true });
 
-    execSync(`npx tsx scripts/gate-freeze/gateFreezeStudy.ts --in "${inFile}" --outDir "${outDir}"`, {
+    execFileSync(process.execPath, ["--import", "tsx", "scripts/gate-freeze/gateFreezeStudy.ts", "--in", inFile, "--outDir", outDir], {
       stdio: "pipe",
     });
 
@@ -20,10 +20,12 @@ describe("gate freeze CLI", () => {
     expect(fs.existsSync(outJson)).toBe(true);
     expect(fs.existsSync(outCsv)).toBe(true);
 
-    const obj = JSON.parse(fs.readFileSync(outJson, "utf8"));
+    const obj = JSON.parse(fs.readFileSync(outJson, "utf8")) as {
+      recommendations: Array<{ groupKey: string; method: string; recommendedHoldingTime_s: number }>;
+    };
     expect(obj.recommendations.length).toBeGreaterThanOrEqual(2);
 
-    const abs = obj.recommendations.find((r: any) => r.groupKey === "fp-ABS");
+    const abs = obj.recommendations.find((recommendation) => recommendation.groupKey === "fp-ABS");
     expect(abs).toBeTruthy();
     expect(abs.method).toBe("weight_plateau");
     expect(abs.recommendedHoldingTime_s).toBeGreaterThan(0);

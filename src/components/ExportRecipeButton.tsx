@@ -32,6 +32,7 @@ export function buildExportRecipeSnapshot({
   return buildRecipeSnapshot({
     input: {
       ...(input ?? {}),
+      ...(typeof output?.shotVolumeCm3 === 'number' ? { shotVolumeCm3: output.shotVolumeCm3 } : {}),
       cad: {
         volumeCm3: drawing.volumeCm3,
         projectedAreaCm2: drawing.surfaceCm2,

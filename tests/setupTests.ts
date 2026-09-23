@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom";
 
+if (typeof (global as any).setImmediate === 'undefined') {
+	(global as any).setImmediate = (callback: (...args: any[]) => void, ...args: any[]) => setTimeout(callback, 0, ...args);
+}
+
 // Polyfill TextEncoder/TextDecoder for Node/Jest environments
 if (typeof (global as any).TextEncoder === 'undefined') {
 	// eslint-disable-next-line @typescript-eslint/no-var-requires

@@ -16,11 +16,13 @@ describe('recipe export', () => {
   });
 
   test('csv header order and separator', () => {
-    const snap = buildRecipeSnapshot({ projectName: 'P', input: {}, output: {} });
+    const snap = buildRecipeSnapshot({ projectName: 'P', input: {}, output: { shotVolumeCm3: 19.307248 } });
     const csv = exportRecipeCsv(snap);
     const lines = csv.trim().split('\n');
     expect(lines[0].includes(';')).toBe(true);
     expect(lines[0].startsWith('projectName;')).toBe(true);
+    const shotIndex = lines[0].split(';').indexOf('shotVolumeCm3');
+    expect(lines[1].split(';')[shotIndex]).toBe('19.307248');
   });
 
   test('pdf smoke: generates bytes starting with %PDF', async () => {

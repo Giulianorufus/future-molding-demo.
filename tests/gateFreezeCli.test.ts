@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 describe("gate freeze CLI", () => {
   test("produces recommendations.json/csv", () => {
@@ -10,7 +10,7 @@ describe("gate freeze CLI", () => {
 
     fs.rmSync(outDir, { recursive: true, force: true });
 
-    execSync(`npx tsx scripts/gate-freeze/gateFreezeStudy.ts --in "${inFile}" --outDir "${outDir}"`, {
+    execFileSync(process.execPath, ["--import", "tsx", "scripts/gate-freeze/gateFreezeStudy.ts", "--in", inFile, "--outDir", outDir], {
       stdio: "pipe",
     });
 

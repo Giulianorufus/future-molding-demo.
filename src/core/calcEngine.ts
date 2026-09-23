@@ -31,6 +31,7 @@ export type CalculationInput = {
 
 export type CalculationResult = {
   tonnellaggioRequired: number
+  shotVolumeCm3: number
   pressureBar: number
   screwDiameterMm: number
   velocityMmPerS: number
@@ -89,6 +90,7 @@ export function calcolaParametri(input: CalculationInput, _context?: CalcContext
 
   return {
     tonnellaggioRequired: Number(toFinite(out.tonnellaggio, 0).toFixed(1)),
+    shotVolumeCm3: toFinite(out.shotVolumeCm3, input.shotVolumeCm3 ?? input.volumeCm3),
     pressureBar: Math.round(toFinite(out.pressioneIniezione, 0)),
     screwDiameterMm: screw,
     velocityMmPerS: Math.round(flowCm3s),

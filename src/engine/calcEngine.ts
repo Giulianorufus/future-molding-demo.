@@ -2,7 +2,7 @@ import { PressProfile } from "./pressProfiles";
 import { MaterialInfo } from "./materialData";
 import { recommendedClampForceTon } from "./clampForce";
 import { computeClampForce } from "../lib/clampForce";
-import { evaluateClampCapacity } from "../lib/clampCapacity";
+import { CLAMP_USABLE_FRACTION, evaluateClampCapacity } from "../lib/clampCapacity";
 import { materialCatalog, getMaterialInput } from "../data/materialCatalog";
 import type { MaterialProfile } from "@/types/material";
 import { ARBURG_PRESS_CATALOG } from "../data/arburgPressCatalog";
@@ -296,7 +296,8 @@ export function calculateParameters(input: CalcInput): CalcResult {
   // No invented 5% runner. Hot runner contributes no cold-runner waste here;
   // cold runner uses only the operator-provided value; unknown stays provisional.
   const runnerVol = feedSystem === 'cold' ? (configuredRunnerVol ?? 0) : 0;
-  const totalShot = Math.round((totalPartsVol + runnerVol) * 100) / 100;
+  // Preserve the CAD regression precision; presentation may round separately.
+  const totalShot = Math.round((totalPartsVol + runnerVol) * 1_000_000) / 1_000_000;
   
   const warnings: string[] = [];
   if (!(typeof projArea === 'number' && projArea > 0)) warnings.push('Area proiettata non disponibile: forza di chiusura provvisoria');
@@ -310,7 +311,8 @@ export function calculateParameters(input: CalcInput): CalcResult {
     if (maxPressure && holdingPressureBar > maxPressure) warnings.push(`Pressione tenuta ${holdingPressureBar} bar > max pressa ${maxPressure} bar`);
     const shotCap = ep?.maxShotVolume_cm3 ?? ep?.shotVolumeCm3 ?? ep?.maxShotVolumeCm3;
     if (shotCap && totalShot > shotCap) warnings.push(`Shot stimato ${totalShot} cm³ > capacità vite pressa ${shotCap} cm³`);
-    if (clampForceTon > (ep?.clampForceTon || 0)) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità pressa ${ep?.clampForceTon} ton`);
+    const usableClampTon = (ep?.clampForceTon || 0) * CLAMP_USABLE_FRACTION;
+    if (usableClampTon > 0 && clampForceTon > usableClampTon) warnings.push(`Forza di chiusura ${clampForceTon} ton > capacità utilizzabile pressa ${usableClampTon.toFixed(1)} ton (85% nominale)`);
 
   // Apply pressure multiplier (after holdingPressureBar initialization and overrides)
   try {
@@ -381,7 +383,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
   const vpRes: VPResult = { vpVolumeCm3: vpVolume, switchVolumeCm3: Math.max(1, Math.round((pieceVolFromStore || pieceVol) * 0.6)) };
   const packRes: PackResult = { packPressureBar: Math.round((material as any).density_g_cm3 ?? 1 * Math.max(20, Math.min(200, (pieceVolFromStore || pieceVol) * 0.5))), packTimeSec: packTime };
   const coolingFromThickness = thickness ? Math.round((material.crystalline ? 22 : 18) * (1 + Math.pow((thickness / 3), 1.4) * 0.25)) : (material.crystalline ? 22 : 18);
-  const tonnage = (() => { const area = (projAreaFromStore || projArea || 10); const required = Math.max(1, Math.round(area * 0.01 * 100) / 100); const pressAdequate = (press?.clampForceTon || 0) >= required; return { requiredTonnage_t: required, pressAdequate }; })();
+  const tonnage = { requiredTonnage_t: clampForceTon, pressAdequate: (press?.clampForceTon || 0) * CLAMP_USABLE_FRACTION >= clampForceTon };
   const tempSug: TemperatureSuggestion = { suggestedMeltTempC: material.meltMin, suggestedMoldTempC: finalMoldTemp };
   const suggestions: CalcSuggestions = { notes: warnings.slice(0, 3) };
 
@@ -657,6 +659,7 @@ export function calcolaParametri(input: UserCalcInput): UserCalcOutput {
 
   const out: any = {
     volumePezzo: geometry.volumePezzo_cm3,
+    shotVolumeCm3: internal.shotVolumeCm3,
     volumeMaterozza: geometry.volumeMaterozza_cm3,
     volumeTotale: geometry.volumeTotale_cm3,
     areaProiettata: geometry.areaProiettata_cm2,
@@ -719,4 +722,3 @@ export async function computeCalcEngineHash() {
     return '';
   }
 }
-

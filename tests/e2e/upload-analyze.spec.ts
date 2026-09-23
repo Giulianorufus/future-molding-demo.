@@ -1,27 +1,36 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-test('upload STL and trigger analyze', async ({ page, request }) => {
-  // Navigate to app
-  await page.goto('/');
+test('Wizard: STEP reale -> stampo, pressa, materiale -> parametri', async ({ page }) => {
+  const stepPath = path.resolve(process.cwd(), 'public', 'sample-drawings', 'Frutto (1).stp');
 
-  // Attempt to find a file input on the page
-  const fileInput = await page.locator('input[type=file]');
-  const samplePath = path.resolve(process.cwd(), 'public', 'sample-drawings', 'cube40x40x10.stl');
+  await page.goto('/#/wizard');
 
-  // If file input exists, set file
-  if (await fileInput.count() > 0) {
-    await fileInput.setInputFiles(samplePath);
-  } else {
-    test.skip(true, 'No file input found on page to perform upload');
-  }
+  const fileInput = page.locator('input[type="file"]');
+  await expect(fileInput, 'Il Wizard deve esporre il campo per caricare il disegno').toHaveCount(1);
+  await fileInput.setInputFiles(stepPath);
 
-  // Wait for a request to /api/calc/analyze or for an element showing result
-  const analyzeResponse = await page.waitForResponse(resp => resp.url().includes('/api/calc/analyze') && resp.status() === 200, { timeout: 15000 }).catch(() => null);
-  expect(analyzeResponse, 'Expected /api/calc/analyze response').not.toBeNull();
+  await expect(page.getByText('4.326812032516769', { exact: true })).toBeVisible();
+  await expect(page.getByText('7.040000152587891', { exact: true })).toBeVisible();
+  await expect(page.getByText(/17\.600000381469727 x 40 x 27\.90000057220459 mm/)).toBeVisible();
 
-  // Optionally check DOM for calculation result area
-  const resultSelector = '.calculation-result, .calc-result, #calculation-result';
-  const visible = await page.locator(resultSelector).first().isVisible().catch(() => false);
-  expect(visible || analyzeResponse !== null).toBeTruthy();
+  await page.getByRole('button', { name: 'Avanti', exact: true }).click();
+  await page.getByRole('button', { name: '4', exact: true }).click();
+  await page.getByRole('combobox').selectOption('cold');
+  await page.getByRole('spinbutton', { name: 'Volume materozza/canali per stampata (cm³)' }).fill('2');
+  await page.getByRole('spinbutton', { name: 'Area proiettata canali (cm²)' }).fill('1');
+  await page.getByRole('button', { name: 'Avanti', exact: true }).click();
+
+  const pressSelectors = page.getByRole('combobox');
+  await pressSelectors.nth(0).selectOption({ label: 'ARBURG' });
+  await pressSelectors.nth(1).selectOption({ label: 'Arburg 370 U' });
+  await pressSelectors.nth(2).selectOption({ label: '22 mm' });
+  await page.getByRole('button', { name: 'Avanti', exact: true }).click();
+
+  await page.getByRole('button', { name: /PP \(Polipropilene\)/ }).click();
+  await page.getByRole('button', { name: 'Avanti', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Parametri calcolati' })).toBeVisible();
+  await expect(page.getByText('Dose totale stampata:')).toContainText('Dose totale stampata:');
+  await expect(page.getByText('19.31 cm³', { exact: true })).toBeVisible();
 });

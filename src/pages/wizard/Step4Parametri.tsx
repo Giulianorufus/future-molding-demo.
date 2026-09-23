@@ -8,11 +8,6 @@ export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
   const loading = useParametriStore((s) => s.loading)
   const data = result
   const viewerUrl = useDrawingStore((s) => s.viewerUrl)
-  const shotVolumeCm3 = useDrawingStore((s: any) => {
-    const cavities = Math.max(1, Math.floor(Number(s.cavityCount) || 1))
-    const runner = s.feedSystem === 'cold' ? Math.max(0, Number(s.runnerVolumeCm3) || 0) : 0
-    return (Number(s.volumeCm3) || 0) * cavities + runner
-  })
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,7 +41,7 @@ export default function Step4Parametri({ onBack }: { onBack?: () => void }) {
         </div>
       )}
 
-      {data && <div className="rounded border bg-blue-50 px-3 py-2 text-sm text-blue-900">Dose totale stampata: <strong>{shotVolumeCm3.toFixed(2)} cm³</strong></div>}
+      {data && <div className="rounded border bg-blue-50 px-3 py-2 text-sm text-blue-900">Dose totale stampata: <strong>{typeof data.shotVolumeCm3 === 'number' ? `${data.shotVolumeCm3.toFixed(2)} cm³` : 'dato non disponibile'}</strong></div>}
       {data && viewerUrl && <FillSimulationViewer viewerUrl={viewerUrl} durationMs={Math.max(1200, data.times?.injectionMs ?? 3000)} />}
 
       <div className="flex justify-start mt-4">

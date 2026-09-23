@@ -2,8 +2,8 @@ import { buildExportRecipeSnapshot } from './ExportRecipeButton'
 
 test('exports the canonical wizard selections and calculation result', () => {
   const snapshot = buildExportRecipeSnapshot({
-    input: { volumeCm3: 4.326812, shotVolumeCm3: 19.307248 },
-    output: { pressureBar: 15, screwDiameterMm: 22 },
+    input: { volumeCm3: 4.326812, shotVolumeCm3: 19.31 },
+    output: { pressureBar: 15, screwDiameterMm: 22, shotVolumeCm3: 19.307248 },
     drawing: {
       volumeCm3: 4.326812,
       surfaceCm2: 7.04,
@@ -28,7 +28,7 @@ test('exports the canonical wizard selections and calculation result', () => {
     cad: { volumeCm3: 4.326812, projectedAreaCm2: 7.04 },
     mold: { cavityCount: 4, feedSystem: 'cold', runnerVolumeCm3: 2, runnerProjectedAreaCm2: 1 },
   })
-  expect(snapshot.output).toMatchObject({ pressureBar: 15, screwDiameterMm: 22 })
+  expect(snapshot.output).toMatchObject({ pressureBar: 15, screwDiameterMm: 22, shotVolumeCm3: 19.307248 })
   expect(snapshot.press).toMatchObject({ id: 'arburg-370-u', screwDiameter_mm: 22 })
   expect(snapshot.material).toMatchObject({ id: 'pp', factors: { densityGPerCm3: 0.905 } })
 })

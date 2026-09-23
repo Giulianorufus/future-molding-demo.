@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useParametriStore } from "../stores/parametriStore";
 import { useDefectsStore } from "../stores/defectsStore";
@@ -28,7 +29,7 @@ export default function DifettiPage() {
   const viewerUrl = useDrawingStore((s) => s.viewerUrl);
   const conversionStatus = useDrawingStore((s) => s.conversionStatus);
   const conversionMessage = useDrawingStore((s) => s.conversionMessage);
-  const drawingAnalysis = useDrawingStore((s) => ({ volumeCm3: s.volumeCm3, boundingBox: s.boundingBox, previewUrl: s.previewUrl, glbUrl: s.glbUrl }));
+  const drawingAnalysis = useDrawingStore(useShallow((s) => ({ volumeCm3: s.volumeCm3, boundingBox: s.boundingBox, previewUrl: s.previewUrl, glbUrl: s.glbUrl })));
   console.debug('MODEL IN DIFETTI', { viewerUrl, previewUrl: drawingAnalysis.previewUrl, glbUrl: drawingAnalysis.glbUrl, cadAnalysis: { volumeCm3: drawingAnalysis.volumeCm3, bbox: drawingAnalysis.boundingBox }, conversionStatus, conversionMessage });
 
   // Parametri calcolati (read-only)

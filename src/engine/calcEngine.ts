@@ -368,15 +368,7 @@ export function calculateParameters(input: CalcInput): CalcResult {
       // adjust suggested injection speed to the capped flow
       suggestedInjectionSpeedCm3s = cappedFlow;
 
-      // if we have a screw diameter, convert capped flow to screw linear speed and rpm
-      const sd = Number(screwDiameter || (input as any).screwDiameter || 0) || 0;
-      if (sd > 0) {
-        const screwArea_mm2 = Math.PI * (sd * sd) / 4; // mm^2
-        const screwLinear_mm_s = (cappedFlow * 1000) / Math.max(1e-6, screwArea_mm2); // mm3/s -> mm/s
-        const newRpm = Math.round((screwLinear_mm_s * 60) / (Math.PI * sd));
-        // replace screwRpm with the capped value if it's lower
-        if (typeof newRpm === 'number' && Number.isFinite(newRpm)) screwRpm = newRpm;
-      }
+      // Il limite di portata in iniezione non determina i giri di plastificazione.
     }
   } catch (e) {
     // non-blocking: keep original values on error

@@ -6,6 +6,7 @@
  * Keep this file free of independent molding formulas.
  */
 import { calcolaParametri as calculateUnified } from '../engine/calcEngine'
+import { linearScrewSpeedToFlowCm3s } from '../engine/units/injectionFlow'
 import type { CadAnalysisMeta } from '../types/cadAnalysisMeta'
 
 export type CalculationInput = {
@@ -71,9 +72,7 @@ export function calcolaParametri(input: CalculationInput, _context?: CalcContext
       tonnellaggio_kN: toFinite(press?.tonnellaggio) * 9.80665,
       screwDiameter_mm: screw,
       maxInjectionPressure_bar: press?.maxPressureBar,
-      // Legacy catalog calls this mm/s; the compatibility boundary passes the
-      // configured machine maximum through without inventing another formula.
-      maxInjectionSpeed_cm3_s: press?.maxSpeedMmPerS,
+      maxInjectionSpeed_cm3_s: linearScrewSpeedToFlowCm3s(press?.maxSpeedMmPerS, screw) ?? undefined,
       maxShotVolume_cm3: press?.maxShotVolumeCm3,
     },
     geometry: {

@@ -199,9 +199,12 @@ async function runCadWithTimeout<T>(ms: number, fn: () => Promise<T>): Promise<T
 
 export async function parseCAD(file: File, onProgress?: (st: { progress?: number; status?: string; message?: string }) => void): Promise<ParsedCADResultWithError> {
   const ext = file.name.split('.').pop()?.toLowerCase();
-  const arrayBuffer = await file.arrayBuffer();
-
   if (!ext) return cadFailSoftResult(normalizeCadError(new Error('Formato CAD non riconosciuto'), { stage: 'no-ext' }));
+  if (!['step', 'stp', 'iges', 'igs', 'stl'].includes(ext)) {
+    return cadFailSoftResult(normalizeCadError(new Error('Formato CAD non supportato'), { stage: 'unsupported', ext }));
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
 
   const timeoutMs = Number(process.env.CAD_PARSE_TIMEOUT_MS || DEFAULT_PARSE_TIMEOUT_MS);
 
